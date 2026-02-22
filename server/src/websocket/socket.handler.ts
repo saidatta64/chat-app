@@ -14,11 +14,16 @@ export class SocketHandler {
   private io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>;
 
   constructor(httpServer: HTTPServer) {
-    const corsOrigin = process.env.FRONTEND_URL || process.env.CLIENT_URL || '*';
-    
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: corsOrigin,
+        origin: (origin, callback) => {
+          const allowedOrigin = process.env.FRONTEND_URL || process.env.CLIENT_URL;
+          if (!allowedOrigin || origin === allowedOrigin || !origin) {
+            callback(null, true);
+          } else {
+            callback(new Error('Not allowed by CORS'));
+          }
+        },
         methods: ['GET', 'POST'],
         credentials: true,
       },

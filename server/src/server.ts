@@ -18,10 +18,19 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // Middleware
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || process.env.CLIENT_URL || '*',
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    const allowedOrigin = process.env.FRONTEND_URL || process.env.CLIENT_URL;
+    // Allow any origin if FRONTEND_URL is not set (for development)
+    // or if the request is from the allowed origin
+    if (!allowedOrigin || origin === allowedOrigin || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 };
 
 app.use(cors(corsOptions));
