@@ -61,11 +61,13 @@ export interface MessageResponse {
   _id: string;
   chatId: string;
   senderId: string;
+  senderName?: string;
   content: string;
   replyTo?: {
     _id: string;
     content: string;
     senderId: string;
+    senderName?: string;
   };
   createdAt: Date;
   readAt?: Date;

@@ -215,7 +215,11 @@ export class ChatService {
     // Get messages
     const messages = await Message.find({ chatId })
       .populate('senderId', 'username')
-      .populate('replyTo', 'content senderId')
+      .populate({
+        path: 'replyTo',
+        select: 'content senderId',
+        populate: { path: 'senderId', select: 'username' }
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -265,7 +269,11 @@ export class ChatService {
     
     // If it's a reply, we need to populate it for the response
     if (replyToId) {
-      await savedMessage.populate('replyTo', 'content senderId');
+      await savedMessage.populate({
+        path: 'replyTo',
+        select: 'content senderId',
+        populate: { path: 'senderId', select: 'username' }
+      });
     }
     
     return this.toMessageResponse(savedMessage);
@@ -298,10 +306,12 @@ export class ChatService {
     // Handle replyTo populated data
     let replyToResponse;
     if (message.replyTo && typeof message.replyTo === 'object') {
+      const rSender = message.replyTo.senderId;
       replyToResponse = {
         _id: message.replyTo._id.toString(),
         content: message.replyTo.content,
-        senderId: message.replyTo.senderId?.toString?.() ?? String(message.replyTo.senderId),
+        senderId: rSender?._id?.toString?.() ?? String(rSender ?? ''),
+        senderName: rSender && typeof rSender === 'object' ? rSender.username : undefined,
       };
     }
 
@@ -309,6 +319,7 @@ export class ChatService {
       _id: message._id.toString(),
       chatId: message.chatId?.toString?.() ?? String(message.chatId),
       senderId,
+      senderName: message.senderId && typeof message.senderId === 'object' ? message.senderId.username : undefined,
       content: message.content,
       replyTo: replyToResponse,
       createdAt: message.createdAt,

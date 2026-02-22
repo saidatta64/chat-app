@@ -27,11 +27,13 @@ interface Message {
   _id: string;
   chatId: string;
   senderId: string;
+  senderName?: string;
   content: string;
   replyTo?: {
     _id: string;
     content: string;
     senderId: string;
+    senderName?: string;
   };
   createdAt: string;
 }
@@ -504,13 +506,18 @@ function App() {
                           <div className="date-separator">{formatDateLabel(message.createdAt)}</div>
                         )}
                         <div className={`message ${String(message.senderId) === String(currentUser._id) ? 'own' : 'other'}`}>
-                          {message.replyTo && (
-                            <div className="message-reply-context">
-                              <span className="reply-context-text">{message.replyTo.content}</span>
-                            </div>
-                          )}
                           <div className="message-bubble-wrapper">
-                            <div className="message-bubble">{message.content}</div>
+                            <div className="message-bubble">
+                              {message.replyTo && (
+                                <div className="message-reply-context">
+                                  <span className="reply-context-name">
+                                    {String(message.replyTo.senderId) === String(currentUser._id) ? 'You' : (message.replyTo.senderName || 'User')}
+                                  </span>
+                                  <span className="reply-context-text">{message.replyTo.content}</span>
+                                </div>
+                              )}
+                              {message.content}
+                            </div>
                             <button
                               className="message-reply-btn"
                               onClick={() => setReplyingTo(message)}
@@ -532,7 +539,9 @@ function App() {
               {replyingTo && (
                 <div className="reply-preview">
                   <div className="reply-preview-content">
-                    <span className="reply-preview-label">Replying to {String(replyingTo.senderId) === String(currentUser._id) ? 'yourself' : 'them'}</span>
+                    <span className="reply-preview-label">
+                      Replying to {String(replyingTo.senderId) === String(currentUser._id) ? 'you' : (replyingTo.senderName || 'user')}
+                    </span>
                     <span className="reply-preview-text">{replyingTo.content}</span>
                   </div>
                   <button className="reply-preview-close" onClick={() => setReplyingTo(null)}>&times;</button>

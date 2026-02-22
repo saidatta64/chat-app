@@ -551,39 +551,38 @@ body {
 }
 
 .message-reply-context {
-  background: var(--bg-tertiary);
-  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.12);
+  padding: 6px 10px;
   border-radius: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   border-left: 3px solid var(--accent);
-  max-width: 100%;
-  opacity: 0.8;
-  font-size: 0.8rem;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reply-context-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .reply-context-text {
-  display: block;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-muted);
-}
-
-.message.own .message-reply-context {
-  align-self: flex-end;
-}
-
-.message.other .message-reply-context {
-  align-self: flex-start;
 }
 
 .message-bubble {
-  padding: 9px 13px;
-  border-radius: 16px;
-  font-size: 0.92rem;
-  line-height: 1.45;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  line-height: 1.4;
   word-break: break-word;
+  position: relative;
 }
 
 .message.other .message-bubble {
