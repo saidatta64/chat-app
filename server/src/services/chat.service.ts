@@ -3,7 +3,6 @@ import Message from '../models/Message';
 import { Types } from 'mongoose';
 import {
   IChat,
-  IMessage,
   CreateChatRequest,
   ChatResponse,
   MessageResponse,
