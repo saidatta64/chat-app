@@ -280,6 +280,30 @@ export class ChatService {
   }
 
   /**
+   * Delete a message
+   */
+  async deleteMessage(messageId: string, userId: string): Promise<{ success: boolean; chatId: string }> {
+    if (!Types.ObjectId.isValid(messageId) || !Types.ObjectId.isValid(userId)) {
+      throw new Error('Invalid message ID or user ID');
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      throw new Error('Message not found');
+    }
+
+    // Verify user is the sender
+    if (message.senderId.toString() !== userId) {
+      throw new Error('You can only delete your own messages');
+    }
+
+    const chatId = message.chatId.toString();
+    await Message.findByIdAndDelete(messageId);
+
+    return { success: true, chatId };
+  }
+
+  /**
    * Convert IChat to ChatResponse
    */
   private toChatResponse(chat: IChat): ChatResponse {

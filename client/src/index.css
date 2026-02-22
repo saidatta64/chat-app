@@ -520,34 +520,46 @@ body {
   flex-direction: row-reverse;
 }
 
-.message-reply-btn {
+.message-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--transition);
+  flex-shrink: 0;
+}
+
+.message-row:hover .message-actions {
+  opacity: 1;
+}
+
+.message-action-btn {
   padding: 4px;
   background: transparent;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 50%;
-  opacity: 0;
-  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  transition: color var(--transition), background var(--transition);
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+}
+
+.message-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.message-action-btn.delete:hover {
+  background: var(--error-bg);
+  color: var(--error);
 }
 
 @media (max-width: 600px) {
-  .message-reply-btn {
+  .message-actions {
     opacity: 0.7;
   }
-}
-
-.message-row:hover .message-reply-btn {
-  opacity: 1;
-}
-
-.message-reply-btn:hover {
-  background: var(--bg-hover);
-  color: var(--accent);
 }
 
 .message-reply-context {
@@ -854,6 +866,24 @@ body {
   background: var(--bg-hover);
 }
 
+.btn-danger {
+  color: #fff;
+  background: var(--error);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #ff5f5f;
+  box-shadow: 0 4px 12px rgba(248, 113, 113, 0.25);
+}
+
+.confirm-modal {
+  max-width: 360px;
+}
+
+.confirm-modal h2 {
+  color: var(--error);
+}
+
 /* ========== Utility ========== */
 .loading {
   color: var(--text-muted);
@@ -1018,5 +1048,50 @@ body {
     right: 12px !important;
     bottom: 16px !important;
     font-size: 13px;
+    width: auto !important;
+  }
+}
+
+/* ========== Toasts ========== */
+.toast-notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  animation: toastSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  max-width: 320px;
+  font-size: 0.9rem;
+}
+
+.toast-notification.error {
+  color: var(--error);
+  background: var(--error-bg);
+  border-color: var(--error);
+}
+
+.toast-notification.success {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success);
+}
+
+@keyframes toastSlide {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
   }
 }

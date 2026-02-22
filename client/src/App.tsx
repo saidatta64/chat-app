@@ -99,12 +99,76 @@ function App() {
   // Reply feature
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
+  // Custom confirmation modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+  });
+
+  // Toast auto-dismiss helpers
+  const showSuccess = useCallback((msg: string) => {
+    setSuccess(msg);
+    setTimeout(() => setSuccess((prev) => prev === msg ? '' : prev), 3000);
+  }, []);
+
+  const showError = useCallback((msg: string) => {
+    setError(msg);
+    setTimeout(() => setError((prev) => prev === msg ? '' : prev), 5000);
+  }, []);
+
   // On mobile: show sidebar when no chat selected, hide when chat selected
   useEffect(() => {
     if (isMobile) {
       setMobileSidebarOpen(!selectedChat);
     }
   }, [selectedChat, isMobile]);
+
+  const loadChats = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const res = await axios.get(`${API_URL}/api/chat/user/${currentUser._id}`);
+      setChats(res.data);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to load chats');
+    }
+  }, [currentUser, showError]);
+
+  const loadMessages = useCallback(async () => {
+    if (!selectedChat) return;
+    try {
+      const res = await axios.get(`${API_URL}/api/chat/${selectedChat._id}/messages?limit=100`);
+      setMessages(res.data.data || []);
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to load messages');
+    }
+  }, [selectedChat, showError]);
+
+  useEffect(() => { if (currentUser) loadChats(); }, [currentUser, loadChats]);
+  useEffect(() => { if (selectedChat) loadMessages(); else setMessages([]); }, [selectedChat, loadMessages]);
+
+  const handleDeleteMessage = (messageId: string) => {
+    if (!socket || !currentUser) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Message',
+      message: 'Are you sure you want to delete this message? This action cannot be undone.',
+      onConfirm: () => {
+        socket.emit('MESSAGE_DELETE', {
+          messageId,
+          userId: currentUser._id
+        });
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
 
   // Initialize socket
   useEffect(() => {
@@ -129,17 +193,29 @@ function App() {
         }
         loadChats();
       });
-      newSocket.on('CHAT_REQUEST', () => loadChats());
+      newSocket.on('MESSAGE_DELETED', (data) => {
+        if (data.chatId === selectedChat?._id) {
+          setMessages((prev) => prev.filter((m) => m._id !== data.messageId));
+        }
+        showSuccess('Message removed');
+      });
+      newSocket.on('CHAT_REQUEST', () => {
+        loadChats();
+        showSuccess('New chat request received!');
+      });
       newSocket.on('CHAT_ACCEPTED', (data) => {
         loadChats();
         if (data.chat._id === selectedChat?._id) setSelectedChat(data.chat);
+        showSuccess('Chat request accepted!');
       });
-      newSocket.on('ERROR', (data) => setError(data.error));
+      newSocket.on('ERROR', (data) => {
+        showError(data.error);
+      });
 
       setSocket(newSocket);
       return () => { newSocket.disconnect(); };
     }
-  }, [currentUser, selectedChat]);
+  }, [currentUser, selectedChat, loadChats]);
 
   // Test backend
   useEffect(() => {
@@ -147,29 +223,6 @@ function App() {
       setError(`Cannot connect to backend at ${API_URL}. Make sure the server is running.`)
     );
   }, []);
-
-  const loadChats = useCallback(async () => {
-    if (!currentUser) return;
-    try {
-      const res = await axios.get(`${API_URL}/api/chat/user/${currentUser._id}`);
-      setChats(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load chats');
-    }
-  }, [currentUser]);
-
-  const loadMessages = useCallback(async () => {
-    if (!selectedChat) return;
-    try {
-      const res = await axios.get(`${API_URL}/api/chat/${selectedChat._id}/messages?limit=100`);
-      setMessages(res.data.data || []);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load messages');
-    }
-  }, [selectedChat]);
-
-  useEffect(() => { if (currentUser) loadChats(); }, [currentUser]);
-  useEffect(() => { if (selectedChat) loadMessages(); else setMessages([]); }, [selectedChat]);
 
   const handleEnter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,7 +233,7 @@ function App() {
       setCurrentUser(res.data);
       setNewUsername('');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to enter');
+      showError(err.response?.data?.error || 'Failed to enter');
     } finally {
       setLoading(false);
     }
@@ -199,8 +252,9 @@ function App() {
       setShowChatModal(false);
       setSelectedUserId('');
       loadChats();
+      showSuccess('Chat request sent!');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create chat');
+      showError(err.response?.data?.error || 'Failed to create chat');
     } finally {
       setLoading(false);
     }
@@ -212,8 +266,9 @@ function App() {
       await axios.post(`${API_URL}/api/chat/${chat._id}/accept`, { userId: currentUser._id });
       loadChats();
       if (chat._id === selectedChat?._id) setSelectedChat({ ...chat, status: 'accepted' });
+      showSuccess('Chat accepted!');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to accept chat');
+      showError(err.response?.data?.error || 'Failed to accept chat');
     }
   };
 
@@ -348,8 +403,7 @@ function App() {
             className="copy-id-btn"
             onClick={() => {
               navigator.clipboard.writeText(currentUser._id);
-              setSuccess('User ID copied!');
-              setTimeout(() => setSuccess(''), 2000);
+              showSuccess('User ID copied!');
             }}
             title="Click to copy your User ID"
           >
@@ -435,8 +489,7 @@ function App() {
                 className="sidebar-id-badge"
                 onClick={() => {
                   navigator.clipboard.writeText(currentUser._id);
-                  setSuccess('User ID copied!');
-                  setTimeout(() => setSuccess(''), 2000);
+                  showSuccess('User ID copied!');
                 }}
                 title="Click to copy your User ID"
               >
@@ -518,16 +571,32 @@ function App() {
                               )}
                               {message.content}
                             </div>
-                            <button
-                              className="message-reply-btn"
-                              onClick={() => setReplyingTo(message)}
-                              title="Reply"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="9 17 4 12 9 7"></polyline>
-                                <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
-                              </svg>
-                            </button>
+                            <div className="message-actions">
+                              <button
+                                className="message-action-btn"
+                                onClick={() => setReplyingTo(message)}
+                                title="Reply"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="9 17 4 12 9 7"></polyline>
+                                  <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+                                </svg>
+                              </button>
+                              {String(message.senderId) === String(currentUser._id) && (
+                                <button
+                                  className="message-action-btn delete"
+                                  onClick={() => handleDeleteMessage(message._id)}
+                                  title="Delete Message"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div className="message-time">{formatTime(message.createdAt)}</div>
                         </div>
@@ -579,12 +648,11 @@ function App() {
                 />
                 <small>💡 Share your ID (tap the ID badge in the header) and ask them to paste it here.</small>
               </div>
-              {error && <div className="error">{error}</div>}
               <div className="button-group">
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => { setShowChatModal(false); setSelectedUserId(''); setError(''); }}
+                  onClick={() => { setShowChatModal(false); setSelectedUserId(''); }}
                 >
                   Cancel
                 </button>
@@ -597,36 +665,40 @@ function App() {
         </div>
       )}
 
+      {/* ── Confirmation Modal ── */}
+      {confirmModal.isOpen && (
+        <div className="modal" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{confirmModal.title}</h2>
+            <p className="modal-hint">{confirmModal.message}</p>
+            <div className="button-group">
+              <button
+                className="btn btn-secondary"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={confirmModal.onConfirm}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toast notifications ── */}
       {error && (
-        <div
-          className="toast-notification"
-          style={{
-            position: 'fixed', bottom: 20, right: 20,
-            background: '#1A1F2B', color: '#F87171',
-            padding: '12px 18px', borderRadius: 8,
-            border: '1px solid #222633', boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-            cursor: 'pointer', zIndex: 3000, fontSize: 14,
-            maxWidth: 320,
-          }}
-          onClick={() => setError('')}
-        >
-          {error} <span style={{ opacity: 0.6 }}>(tap to dismiss)</span>
+        <div className="toast-notification error" onClick={() => setError('')}>
+          <span>{error}</span>
+          <span style={{ opacity: 0.6, fontSize: '11px', marginLeft: 'auto' }}>(tap to dismiss)</span>
         </div>
       )}
       {success && (
-        <div
-          className="toast-notification"
-          style={{
-            position: 'fixed', bottom: 20, right: 20,
-            background: '#1A1F2B', color: '#34D399',
-            padding: '12px 18px', borderRadius: 8,
-            border: '1px solid #222633', boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-            cursor: 'pointer', zIndex: 3000, fontSize: 14,
-          }}
-          onClick={() => setSuccess('')}
-        >
-          {success}
+        <div className="toast-notification success" onClick={() => setSuccess('')}>
+          <span>{success}</span>
         </div>
       )}
     </div>

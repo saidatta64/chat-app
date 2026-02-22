@@ -3,6 +3,7 @@ import { MessageResponse, ChatResponse } from './index';
 // Client → Server Events
 export interface ClientToServerEvents {
   MESSAGE_SEND: (data: MessageSendData) => void;
+  MESSAGE_DELETE: (data: MessageDeleteData) => void;
   USER_CONNECT: (data: UserConnectData) => void;
   USER_DISCONNECT: () => void;
 }
@@ -10,6 +11,7 @@ export interface ClientToServerEvents {
 // Server → Client Events
 export interface ServerToClientEvents {
   MESSAGE_RECEIVED: (data: MessageReceivedData) => void;
+  MESSAGE_DELETED: (data: MessageDeletedData) => void;
   CHAT_REQUEST: (data: ChatRequestData) => void;
   CHAT_ACCEPTED: (data: ChatAcceptedData) => void;
   ERROR: (data: SocketErrorData) => void;
@@ -21,6 +23,16 @@ export interface MessageSendData {
   content: string;
   senderId: string;
   replyToId?: string;
+}
+
+export interface MessageDeleteData {
+  messageId: string;
+  userId: string;
+}
+
+export interface MessageDeletedData {
+  messageId: string;
+  chatId: string;
 }
 
 export interface UserConnectData {

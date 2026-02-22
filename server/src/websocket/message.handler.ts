@@ -69,6 +69,53 @@ export class MessageHandler {
   }
 
   /**
+   * Handle MESSAGE_DELETE event
+   */
+  async handleMessageDelete(
+    io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
+    socket: Socket<ClientToServerEvents, ServerToClientEvents>,
+    data: { messageId: string; userId: string },
+    onlineUsers: Map<string, string>
+  ): Promise<void> {
+    const { messageId, userId } = data;
+
+    if (!messageId || !userId) {
+      socket.emit('ERROR', {
+        error: 'Missing required fields',
+        message: 'messageId and userId are required',
+      });
+      return;
+    }
+
+    try {
+      const { success, chatId } = await chatService.deleteMessage(messageId, userId);
+
+      if (success) {
+        // Get chat participants to notify them
+        const chat = await chatService.getChatById(chatId);
+        if (chat) {
+          const participants = chat.participants.map((p) => p.toString());
+          participants.forEach((pId) => {
+            const socketId = onlineUsers.get(pId);
+            if (socketId) {
+              io.to(socketId).emit('MESSAGE_DELETED', {
+                messageId,
+                chatId,
+              });
+            }
+          });
+        }
+        console.log(`Message ${messageId} deleted by user ${userId}`);
+      }
+    } catch (error: any) {
+      socket.emit('ERROR', {
+        error: error.message || 'Failed to delete message',
+        message: 'An error occurred while deleting the message',
+      });
+    }
+  }
+
+  /**
    * Notify users of new chat request
    */
   notifyChatRequest(

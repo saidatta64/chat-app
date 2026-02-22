@@ -57,6 +57,18 @@ export class SocketHandler {
         }
       });
 
+      // Handle message deletion
+      socket.on('MESSAGE_DELETE', async (data) => {
+        try {
+          await messageHandler.handleMessageDelete(this.io, socket, data, onlineUsers);
+        } catch (error: any) {
+          socket.emit('ERROR', {
+            error: error.message || 'Failed to delete message',
+            message: 'An error occurred while deleting the message',
+          });
+        }
+      });
+
       // Handle disconnection
       socket.on('disconnect', () => {
         // Remove user from online users map
