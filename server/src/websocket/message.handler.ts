@@ -17,7 +17,7 @@ export class MessageHandler {
     data: MessageSendData,
     onlineUsers: Map<string, string>
   ): Promise<void> {
-    const { chatId, content, senderId } = data;
+    const { chatId, content, senderId, replyToId } = data;
 
     // Validate input
     if (!chatId || !content || !senderId) {
@@ -42,7 +42,7 @@ export class MessageHandler {
       }
 
       // Create message
-      const message = await chatService.createMessage(chatId, senderId, content);
+      const message = await chatService.createMessage(chatId, senderId, content, replyToId);
 
       // Get chat participants
       const participants = chat.participants.map((p) => p.toString());

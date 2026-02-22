@@ -20,6 +20,7 @@ export interface MessageSendData {
   chatId: string;
   content: string;
   senderId: string;
+  replyToId?: string;
 }
 
 export interface UserConnectData {

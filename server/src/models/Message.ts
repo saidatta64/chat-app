@@ -20,6 +20,10 @@ const messageSchema = new Schema<IMessage>(
       minlength: [1, 'Message cannot be empty'],
       maxlength: [5000, 'Message cannot exceed 5000 characters'],
     },
+    replyTo: {
+      type: Schema.Types.ObjectId,
+      ref: 'Message',
+    },
     createdAt: {
       type: Date,
       default: Date.now,

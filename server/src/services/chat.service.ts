@@ -215,6 +215,7 @@ export class ChatService {
     // Get messages
     const messages = await Message.find({ chatId })
       .populate('senderId', 'username')
+      .populate('replyTo', 'content senderId')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -237,7 +238,8 @@ export class ChatService {
   async createMessage(
     chatId: string,
     senderId: string,
-    content: string
+    content: string,
+    replyToId?: string
   ): Promise<MessageResponse> {
     if (!Types.ObjectId.isValid(chatId) || !Types.ObjectId.isValid(senderId)) {
       throw new Error('Invalid chat ID or sender ID');
@@ -256,9 +258,16 @@ export class ChatService {
       chatId: new Types.ObjectId(chatId),
       senderId: new Types.ObjectId(senderId),
       content: content.trim(),
+      replyTo: replyToId ? new Types.ObjectId(replyToId) : undefined,
     });
 
     const savedMessage = await message.save();
+    
+    // If it's a reply, we need to populate it for the response
+    if (replyToId) {
+      await savedMessage.populate('replyTo', 'content senderId');
+    }
+    
     return this.toMessageResponse(savedMessage);
   }
 
@@ -285,11 +294,23 @@ export class ChatService {
       message.senderId && typeof message.senderId === 'object' && message.senderId._id
         ? message.senderId._id.toString()
         : String(message.senderId ?? '');
+
+    // Handle replyTo populated data
+    let replyToResponse;
+    if (message.replyTo && typeof message.replyTo === 'object') {
+      replyToResponse = {
+        _id: message.replyTo._id.toString(),
+        content: message.replyTo.content,
+        senderId: message.replyTo.senderId?.toString?.() ?? String(message.replyTo.senderId),
+      };
+    }
+
     return {
       _id: message._id.toString(),
       chatId: message.chatId?.toString?.() ?? String(message.chatId),
       senderId,
       content: message.content,
+      replyTo: replyToResponse,
       createdAt: message.createdAt,
       readAt: message.readAt,
     };

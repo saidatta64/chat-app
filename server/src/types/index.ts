@@ -52,6 +52,7 @@ export interface IMessage extends Document {
   chatId: Types.ObjectId;
   senderId: Types.ObjectId;
   content: string;
+  replyTo?: Types.ObjectId;
   createdAt: Date;
   readAt?: Date;
 }
@@ -61,6 +62,11 @@ export interface MessageResponse {
   chatId: string;
   senderId: string;
   content: string;
+  replyTo?: {
+    _id: string;
+    content: string;
+    senderId: string;
+  };
   createdAt: Date;
   readAt?: Date;
 }

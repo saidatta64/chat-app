@@ -28,6 +28,11 @@ interface Message {
   chatId: string;
   senderId: string;
   content: string;
+  replyTo?: {
+    _id: string;
+    content: string;
+    senderId: string;
+  };
   createdAt: string;
 }
 
@@ -89,6 +94,8 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // Mobile: whether the overlay drawer is open
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
+  // Reply feature
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // On mobile: show sidebar when no chat selected, hide when chat selected
   useEffect(() => {
@@ -216,11 +223,19 @@ function App() {
       return;
     }
     const content = messageInput.trim();
+    const replyToId = replyingTo?._id;
     setMessageInput('');
+    setReplyingTo(null);
     try {
-      socket.emit('MESSAGE_SEND', { chatId: selectedChat._id, content, senderId: currentUser._id });
+      socket.emit('MESSAGE_SEND', {
+        chatId: selectedChat._id,
+        content,
+        senderId: currentUser._id,
+        replyToId
+      });
     } catch {
       setMessageInput(content);
+      if (replyToId) setReplyingTo(replyingTo);
     }
   };
 
@@ -489,7 +504,24 @@ function App() {
                           <div className="date-separator">{formatDateLabel(message.createdAt)}</div>
                         )}
                         <div className={`message ${String(message.senderId) === String(currentUser._id) ? 'own' : 'other'}`}>
-                          <div className="message-bubble">{message.content}</div>
+                          {message.replyTo && (
+                            <div className="message-reply-context">
+                              <span className="reply-context-text">{message.replyTo.content}</span>
+                            </div>
+                          )}
+                          <div className="message-bubble-wrapper">
+                            <div className="message-bubble">{message.content}</div>
+                            <button
+                              className="message-reply-btn"
+                              onClick={() => setReplyingTo(message)}
+                              title="Reply"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="9 17 4 12 9 7"></polyline>
+                                <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+                              </svg>
+                            </button>
+                          </div>
                           <div className="message-time">{formatTime(message.createdAt)}</div>
                         </div>
                       </div>
@@ -497,6 +529,15 @@ function App() {
                   })
                 )}
               </div>
+              {replyingTo && (
+                <div className="reply-preview">
+                  <div className="reply-preview-content">
+                    <span className="reply-preview-label">Replying to {String(replyingTo.senderId) === String(currentUser._id) ? 'yourself' : 'them'}</span>
+                    <span className="reply-preview-text">{replyingTo.content}</span>
+                  </div>
+                  <button className="reply-preview-close" onClick={() => setReplyingTo(null)}>&times;</button>
+                </div>
+              )}
               <form className="input-area" onSubmit={handleSendMessage}>
                 <input
                   type="text"
