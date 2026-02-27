@@ -91,7 +91,7 @@ export class UserService {
   }
 
   /** @deprecated Use enter() for auth. Kept for backward compatibility. */
-  async enterByUsername(username: string): Promise<UserResponse> {
+  async enterByUsername(_username: string): Promise<UserResponse> {
     throw new Error('Password is required. Use enter(username, password).');
   }
 
