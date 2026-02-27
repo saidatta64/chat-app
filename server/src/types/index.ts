@@ -5,12 +5,19 @@ export interface IUser extends Document {
   _id: Types.ObjectId;
   username: string;
   email?: string;
+  passwordHash?: string;
   createdAt: Date;
 }
 
 export interface CreateUserRequest {
   username: string;
   email?: string;
+  password: string;
+}
+
+export interface EnterRequest {
+  username: string;
+  password: string;
 }
 
 export interface UserResponse {

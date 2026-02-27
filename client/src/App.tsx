@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
 
@@ -87,6 +87,7 @@ function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showChatModal, setShowChatModal] = useState(false);
   const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -98,6 +99,7 @@ function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
   // Reply feature
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Custom confirmation modal state
   const [confirmModal, setConfirmModal] = useState<{
@@ -152,6 +154,15 @@ function App() {
 
   useEffect(() => { if (currentUser) loadChats(); }, [currentUser, loadChats]);
   useEffect(() => { if (selectedChat) loadMessages(); else setMessages([]); }, [selectedChat, loadMessages]);
+
+  // Scroll messages to bottom when entering chat or when messages change
+  useEffect(() => {
+    if (!selectedChat || messages.length === 0) return;
+    const el = messagesContainerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [selectedChat?._id, messages]);
 
   const handleDeleteMessage = (messageId: string) => {
     if (!socket || !currentUser) return;
@@ -229,11 +240,16 @@ function App() {
     setLoading(true);
     setError('');
     try {
-      const res = await axios.post(`${API_URL}/api/users/enter`, { username: newUsername.trim() });
+      const res = await axios.post(`${API_URL}/api/users/enter`, {
+        username: newUsername.trim(),
+        password: newPassword,
+      });
       setCurrentUser(res.data);
       setNewUsername('');
+      setNewPassword('');
     } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to enter');
+      const msg = err.response?.data?.error || err.response?.status === 401 ? 'Invalid password' : 'Failed to enter';
+      showError(msg);
     } finally {
       setLoading(false);
     }
@@ -333,13 +349,38 @@ function App() {
     return new Date(d).toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
+  // Turn URLs in text into clickable links (https, http, www., youtu.be)
+  const linkify = (text: string): React.ReactNode[] => {
+    if (!text || typeof text !== 'string') return [text];
+    const urlPattern = /(https?:\/\/[^\s<>"]+)|(www\.[^\s<>"]+)|(youtu\.be\/[^\s<>"]+)/gi;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let m: RegExpExecArray | null;
+    const re = new RegExp(urlPattern.source, urlPattern.flags);
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > lastIndex) {
+        parts.push(text.slice(lastIndex, m.index));
+      }
+      let href = m[0];
+      if (!/^https?:\/\//i.test(href)) href = `https://${href}`;
+      parts.push(
+        <a key={m.index} href={href} target="_blank" rel="noopener noreferrer" className="message-link">
+          {m[0]}
+        </a>
+      );
+      lastIndex = re.lastIndex;
+    }
+    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+    return parts.length ? parts : [text];
+  };
+
   // ── Login screen ──────────────────────────────────────────────────────────
   if (!currentUser) {
     return (
       <div className="modal">
         <div className="modal-content">
           <h2>💬 Chat App</h2>
-          <p className="modal-hint">Enter your username to start chatting.</p>
+          <p className="modal-hint">Enter your username and password to sign in or create an account.</p>
           <form onSubmit={handleEnter}>
             <div className="form-group">
               <label>Username</label>
@@ -350,6 +391,17 @@ function App() {
                 required
                 placeholder="Enter your username"
                 autoFocus
+              />
+            </div>
+            <div className="form-group">
+              <label>Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                placeholder="Enter your password (min 6 characters)"
+                minLength={6}
               />
             </div>
             {error && <div className="error">{error}</div>}
@@ -545,7 +597,7 @@ function App() {
             </div>
           ) : (
             <>
-              <div className="messages-container">
+              <div className="messages-container" ref={messagesContainerRef}>
                 {messages.length === 0 ? (
                   <div className="loading">No messages yet. Say hello!</div>
                 ) : (
@@ -566,10 +618,10 @@ function App() {
                                   <span className="reply-context-name">
                                     {String(message.replyTo.senderId) === String(currentUser._id) ? 'You' : (message.replyTo.senderName || 'User')}
                                   </span>
-                                  <span className="reply-context-text">{message.replyTo.content}</span>
+                                  <span className="reply-context-text">{linkify(message.replyTo.content)}</span>
                                 </div>
                               )}
-                              {message.content}
+                              {linkify(message.content)}
                             </div>
                             <div className="message-actions">
                               <button

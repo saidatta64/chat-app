@@ -1,14 +1,23 @@
 import User from '../models/User';
 import { IUser, CreateUserRequest, UserResponse } from '../types';
 import { Types } from 'mongoose';
+import bcrypt from 'bcryptjs';
+
+const SALT_ROUNDS = 10;
+const MIN_PASSWORD_LENGTH = 6;
 
 export class UserService {
   /**
-   * Create a new user
+   * Create a new user (with password)
    */
   async createUser(data: CreateUserRequest): Promise<UserResponse> {
     try {
-      const user = new User(data);
+      const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+      const user = new User({
+        username: data.username.trim(),
+        email: data.email,
+        passwordHash,
+      });
       const savedUser = await user.save();
       return this.toUserResponse(savedUser);
     } catch (error: any) {
@@ -31,25 +40,59 @@ export class UserService {
   }
 
   /**
-   * Get user by username
+   * Get user by username (optionally include passwordHash for auth)
    */
-  async getUserByUsername(username: string): Promise<IUser | null> {
-    return await User.findOne({ username: username.trim() });
+  async getUserByUsername(username: string, includePasswordHash = false): Promise<IUser | null> {
+    const q = User.findOne({ username: username.trim() });
+    if (includePasswordHash) {
+      q.select('+passwordHash');
+    }
+    return await q;
   }
 
   /**
-   * Enter by username: if user exists, return them (login); otherwise create and return (signup).
+   * Enter: login or signup with username + password.
+   * - New user: create with password.
+   * - Existing user with no password (legacy): set password and return (one-time claim).
+   * - Existing user with password: verify and return, or throw.
    */
-  async enterByUsername(username: string): Promise<UserResponse> {
+  async enter(username: string, password: string): Promise<UserResponse> {
     const trimmed = username.trim();
     if (!trimmed) {
       throw new Error('Username is required');
     }
-    const existing = await this.getUserByUsername(trimmed);
-    if (existing) {
+    if (!password || typeof password !== 'string') {
+      throw new Error('Password is required');
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    }
+
+    const existing = await this.getUserByUsername(trimmed, true);
+    if (!existing) {
+      return this.createUser({ username: trimmed, password });
+    }
+
+    const userWithHash = existing as IUser & { passwordHash?: string };
+    if (!userWithHash.passwordHash) {
+      const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+      (existing as any).passwordHash = passwordHash;
+      await existing.save();
       return this.toUserResponse(existing);
     }
-    return this.createUser({ username: trimmed });
+
+    const match = await bcrypt.compare(password, userWithHash.passwordHash);
+    if (!match) {
+      const err = new Error('Invalid password') as Error & { statusCode?: number };
+      err.statusCode = 401;
+      throw err;
+    }
+    return this.toUserResponse(existing);
+  }
+
+  /** @deprecated Use enter() for auth. Kept for backward compatibility. */
+  async enterByUsername(username: string): Promise<UserResponse> {
+    throw new Error('Password is required. Use enter(username, password).');
   }
 
   /**
