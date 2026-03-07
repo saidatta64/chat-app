@@ -7,6 +7,7 @@ export interface IUser extends Document {
   email?: string;
   passwordHash?: string;
   createdAt: Date;
+  expoPushToken?: string;
 }
 
 export interface CreateUserRequest {
@@ -25,6 +26,11 @@ export interface UserResponse {
   username: string;
   email?: string;
   createdAt: Date;
+}
+
+export interface SavePushTokenRequest {
+  userId: string;
+  token: string;
 }
 
 // Chat Types

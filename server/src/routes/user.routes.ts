@@ -7,5 +7,6 @@ router.post('/', userController.createUser.bind(userController));
 router.post('/enter', userController.enter.bind(userController));
 router.get('/search', userController.searchUsers.bind(userController));
 router.get('/', userController.listUsers.bind(userController));
+router.post('/push-token', userController.savePushToken.bind(userController));
 
 export default router;

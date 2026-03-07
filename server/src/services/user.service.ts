@@ -141,6 +141,20 @@ export class UserService {
       createdAt: user.createdAt,
     };
   }
+
+  /**
+   * Save or update Expo push token for a user.
+   */
+  async saveExpoPushToken(userId: string, token: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new Error('Invalid user ID');
+    }
+    await User.findByIdAndUpdate(
+      userId,
+      { expoPushToken: token },
+      { new: true, upsert: false }
+    );
+  }
 }
 
 export default new UserService();

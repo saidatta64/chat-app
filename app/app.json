@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Edu",
+    "slug": "edu",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/edu-cover.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/edu-cover.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.saidatta64.edu"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a2470425-397f-4527-add5-55083df26c6d"
+      }
+    }
+  }
+}

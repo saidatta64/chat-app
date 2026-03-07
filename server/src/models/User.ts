@@ -24,6 +24,10 @@ const userSchema = new Schema<IUser>(
       required: false,
       select: false,
     },
+    expoPushToken: {
+      type: String,
+      required: false,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

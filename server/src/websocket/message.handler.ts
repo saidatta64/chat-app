@@ -6,6 +6,7 @@ import {
 } from '../types/socket.types';
 import chatService from '../services/chat.service';
 import { ChatResponse } from '../types';
+import notificationService from '../services/notification.service';
 
 export class MessageHandler {
   /**
@@ -47,7 +48,7 @@ export class MessageHandler {
       // Get chat participants
       const participants = chat.participants.map((p) => p.toString());
 
-      // Emit to all participants
+      // Emit to all online participants via websockets
       participants.forEach((userId) => {
         const socketId = onlineUsers.get(userId);
         if (socketId) {
@@ -57,6 +58,18 @@ export class MessageHandler {
           });
         }
       });
+
+      // Send push notifications to offline participants (or all except sender)
+      const recipients = participants.filter((id) => id !== senderId);
+      if (recipients.length > 0) {
+        const senderName = message.senderName || 'New message';
+        await notificationService.sendMessageNotification(recipients, {
+          senderName,
+          content,
+          chatId,
+          senderId,
+        });
+      }
 
       console.log(`Message sent in chat ${chatId} by user ${senderId}`);
     } catch (error: any) {

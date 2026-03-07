@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import userService from '../services/user.service';
-import { CreateUserRequest, EnterRequest } from '../types';
+import { CreateUserRequest, EnterRequest, SavePushTokenRequest } from '../types';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -105,6 +105,24 @@ export class UserController {
       }
       const users = await userService.searchUsers(q, excludeId);
       res.status(200).json(users);
+    } catch (error: any) {
+      next(error);
+    }
+  }
+
+  /**
+   * Save Expo push token for a user.
+   * POST /api/users/push-token
+   */
+  async savePushToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { userId, token }: SavePushTokenRequest = req.body;
+      if (!userId || !token) {
+        res.status(400).json({ error: 'userId and token are required', statusCode: 400 });
+        return;
+      }
+      await userService.saveExpoPushToken(userId, token);
+      res.status(204).send();
     } catch (error: any) {
       next(error);
     }
