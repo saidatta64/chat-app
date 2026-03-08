@@ -23,7 +23,10 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.saidatta64.edu",
-      "permissions": ["android.permission.POST_NOTIFICATIONS"]
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     },
     "plugins": [
       "expo-dev-client",
@@ -36,6 +39,12 @@
       "eas": {
         "projectId": "a2470425-397f-4527-add5-55083df26c6d"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a2470425-397f-4527-add5-55083df26c6d"
     }
   }
 }
