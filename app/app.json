@@ -22,8 +22,13 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.saidatta64.edu"
+      "package": "com.saidatta64.edu",
+      "permissions": ["android.permission.POST_NOTIFICATIONS"]
     },
+    "plugins": [
+      "expo-dev-client",
+      "expo-notifications"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },

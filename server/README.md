@@ -1,6 +1,6 @@
-# Chat App Backend
+# Edu App Backend
 
-A two-person chat application backend built with Node.js, Express, TypeScript, MongoDB, and Socket.io.
+A two-person edu application backend built with Node.js, Express, TypeScript, MongoDB, and Socket.io.
 
 ## Features
 
@@ -71,7 +71,7 @@ cp .env.example .env
 ```env
 PORT=3000
 NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/chat-app
+MONGODB_URI=mongodb://localhost:27017/edu-app
 ```
 
 ## Running the Application

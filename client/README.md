@@ -1,6 +1,6 @@
-# Chat App Frontend
+# Edu App Frontend
 
-React + TypeScript frontend for the Chat App.
+React + TypeScript frontend for the Edu App.
 
 ## Features
 

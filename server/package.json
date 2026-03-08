@@ -1,7 +1,7 @@
 {
-  "name": "chat-app-backend",
+  "name": "edu-app-backend",
   "version": "1.0.0",
-  "description": "Two-person chat app backend with REST API and WebSocket",
+  "description": "Two-person edu app backend with REST API and WebSocket",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",

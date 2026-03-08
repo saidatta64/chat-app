@@ -1,1 +1,1 @@
-# chat-app
+# edu-app

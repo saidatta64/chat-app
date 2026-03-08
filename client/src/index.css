@@ -82,10 +82,10 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 16px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px 16px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
-  min-height: 52px;
+  min-height: calc(52px + env(safe-area-inset-top, 0px));
 }
 
 .header h1 {
@@ -757,7 +757,7 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  padding: 16px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px)) 16px;
 }
 
 .modal-content {
@@ -943,6 +943,7 @@ body {
     transform: translateX(-100%);
     transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
     opacity: 1;
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
   /* When open on mobile */
@@ -1042,7 +1043,7 @@ body {
 
   /* Modal fills the screen nicely */
   .modal {
-    padding: 12px;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px)) 12px;
     align-items: flex-end;
   }
 

@@ -11,15 +11,16 @@ import {
   KeyboardAvoidingView,
   Linking,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 
@@ -178,6 +179,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -202,17 +205,21 @@ const App: React.FC = () => {
   const messagesListRef = useRef<FlatList<any> | null>(null);
 
   // Toast helpers
+  const successTimerObj = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSuccess = useCallback((msg: string) => {
     setSuccess(msg);
-    setTimeout(() => {
-      setSuccess((prev) => (prev === msg ? '' : prev));
+    if (successTimerObj.current) clearTimeout(successTimerObj.current);
+    successTimerObj.current = setTimeout(() => {
+      setSuccess('');
     }, 3000);
   }, []);
 
+  const errorTimerObj = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showError = useCallback((msg: string) => {
     setError(msg);
-    setTimeout(() => {
-      setError((prev) => (prev === msg ? '' : prev));
+    if (errorTimerObj.current) clearTimeout(errorTimerObj.current);
+    errorTimerObj.current = setTimeout(() => {
+      setError('');
     }, 5000);
   }, []);
 
@@ -221,6 +228,10 @@ const App: React.FC = () => {
     (async () => {
       if (!Device.isDevice) {
         console.log('Push notifications only work on a physical device.');
+        return;
+      }
+      if (Constants.appOwnership === 'expo') {
+        console.log('Push notifications are not fully supported in Expo Go. Please use a development build.');
         return;
       }
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -233,7 +244,24 @@ const App: React.FC = () => {
         console.log('Push notification permission not granted');
         return;
       }
-      const tokenData = await Notifications.getExpoPushTokenAsync();
+      if (Platform.OS === 'android') {
+        Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+        });
+      }
+
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+      if (!projectId) {
+        console.log('Project ID not found in app config, trying without it...');
+      }
+
+      const tokenData = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined
+      );
       const token = tokenData.data;
       console.log('Expo push token:', token);
       setExpoPushToken(token);
@@ -549,10 +577,11 @@ const App: React.FC = () => {
   if (!currentUser) {
     // Login screen, full-screen like web modal
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loginContainer}>
-          <Text style={styles.appTitle}>💬 Chat App</Text>
-          <Text style={styles.subtitle}>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.loginContainer}>
+            <Text style={styles.appTitle}>💬 Edu App</Text>
+            <Text style={styles.subtitle}>
             Enter your username and password to sign in or create an
             account.
           </Text>
@@ -600,18 +629,21 @@ const App: React.FC = () => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
   const isInChat = !!selectedChat;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaProvider>
       <KeyboardAvoidingView
-        style={styles.container}
+        style={{ flex: 1, backgroundColor: theme.bgPage }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
       >
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -801,7 +833,7 @@ const App: React.FC = () => {
                       {formatDateLabel(group.date)}
                     </Text>
                   </View>
-                  {group.items.map((message) => {
+                  {group.items.map((message: Message) => {
                     const isOwn =
                       String(message.senderId) ===
                       String(currentUser._id);
@@ -966,8 +998,10 @@ const App: React.FC = () => {
             <Text style={styles.toastText}>{success}</Text>
           </View>
         ) : null}
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </View>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
+    </SafeAreaProvider>
   );
 };
 
@@ -977,6 +1011,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: theme.bgPage,
+    paddingTop: Platform.OS === 'android' ? (Constants.statusBarHeight || 24) + 16 : 0,
   },
   container: {
     flex: 1,

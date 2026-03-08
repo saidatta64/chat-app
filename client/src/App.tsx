@@ -115,14 +115,18 @@ function App() {
   });
 
   // Toast auto-dismiss helpers
+  const successTimerObj = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSuccess = useCallback((msg: string) => {
     setSuccess(msg);
-    setTimeout(() => setSuccess((prev) => prev === msg ? '' : prev), 3000);
+    if (successTimerObj.current) clearTimeout(successTimerObj.current);
+    successTimerObj.current = setTimeout(() => setSuccess(''), 3000);
   }, []);
 
+  const errorTimerObj = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showError = useCallback((msg: string) => {
     setError(msg);
-    setTimeout(() => setError((prev) => prev === msg ? '' : prev), 5000);
+    if (errorTimerObj.current) clearTimeout(errorTimerObj.current);
+    errorTimerObj.current = setTimeout(() => setError(''), 5000);
   }, []);
 
   // On mobile: show sidebar when no chat selected, hide when chat selected
@@ -379,7 +383,7 @@ function App() {
     return (
       <div className="modal">
         <div className="modal-content">
-          <h2>💬 Chat App</h2>
+          <h2>💬 Edu App</h2>
           <p className="modal-hint">Enter your username and password to sign in or create an account.</p>
           <form onSubmit={handleEnter}>
             <div className="form-group">
