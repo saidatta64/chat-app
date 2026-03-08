@@ -36,6 +36,7 @@ interface Message {
     senderName?: string;
   };
   createdAt: string;
+  readAt?: string;
 }
 
 // ── Visual Viewport hook ──────────────────────────────────────────────────
@@ -142,7 +143,7 @@ function App() {
       const res = await axios.get(`${API_URL}/api/chat/user/${currentUser._id}`);
       setChats(res.data);
     } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to load chats');
+      showError(err.response?.data?.error || 'Failed to load chats. Please check your connection.');
     }
   }, [currentUser, showError]);
 
@@ -150,9 +151,18 @@ function App() {
     if (!selectedChat) return;
     try {
       const res = await axios.get(`${API_URL}/api/chat/${selectedChat._id}/messages?limit=100`);
-      setMessages(res.data.data || []);
+      const fetchedMessages = res.data.data || [];
+      setMessages(fetchedMessages);
+      
+      // NEW: mark as read immediately on load
+      if (currentUser && socket && fetchedMessages.length > 0) {
+        socket.emit('MESSAGE_READ', {
+          chatId: selectedChat._id,
+          userId: currentUser._id,
+        });
+      }
     } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to load messages');
+      showError(err.response?.data?.error || 'Failed to load messages. Please check your connection.');
     }
   }, [selectedChat, showError]);
 
@@ -197,7 +207,7 @@ function App() {
       newSocket.on('disconnect', () => setConnectionStatus('disconnected'));
       newSocket.on('connect_error', () => {
         setConnectionStatus('disconnected');
-        setError(`Failed to connect to server at ${API_URL}`);
+        showError('Failed to connect to chat server. Please try again later.');
       });
       newSocket.on('MESSAGE_RECEIVED', (data) => {
         if (data.chatId === selectedChat?._id) {
@@ -205,8 +215,30 @@ function App() {
             if (prev.some((m) => m._id === data.message._id)) return prev;
             return [...prev, data.message];
           });
+          
+          // NEW: tell the server we read it!
+          if (String(data.message.senderId) !== String(currentUser._id)) {
+            newSocket.emit('MESSAGE_READ', {
+              chatId: data.chatId,
+              userId: currentUser._id,
+            });
+          }
         }
         loadChats();
+      });
+      newSocket.on('MESSAGE_READ', (data) => {
+        if (data.chatId === selectedChat?._id) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              // Update messages sent by users OTHER than the one who just read the chat
+              // (so the sender sees the update)
+              if (String(m.senderId) !== String(data.userId) && !m.readAt) {
+                return { ...m, readAt: data.readAt };
+              }
+              return m;
+            })
+          );
+        }
       });
       newSocket.on('MESSAGE_DELETED', (data) => {
         if (data.chatId === selectedChat?._id) {
@@ -232,12 +264,11 @@ function App() {
     }
   }, [currentUser, selectedChat, loadChats]);
 
-  // Test backend
   useEffect(() => {
     axios.get(`${API_URL}/health`).catch(() =>
-      setError(`Cannot connect to backend at ${API_URL}. Make sure the server is running.`)
+      showError('Cannot connect to backend server. Make sure the server is running.')
     );
-  }, []);
+  }, [showError]);
 
   const handleEnter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,7 +283,7 @@ function App() {
       setNewUsername('');
       setNewPassword('');
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.response?.status === 401 ? 'Invalid password' : 'Failed to enter';
+      const msg = err.response?.data?.error || (err.response?.status === 401 ? 'Invalid password' : 'An error occurred. Please check your connection.');
       showError(msg);
     } finally {
       setLoading(false);
@@ -274,7 +305,7 @@ function App() {
       loadChats();
       showSuccess('Chat request sent!');
     } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to create chat');
+      showError(err.response?.data?.error || 'Failed to create chat. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -288,7 +319,7 @@ function App() {
       if (chat._id === selectedChat?._id) setSelectedChat({ ...chat, status: 'accepted' });
       showSuccess('Chat accepted!');
     } catch (err: any) {
-      showError(err.response?.data?.error || 'Failed to accept chat');
+      showError(err.response?.data?.error || 'Failed to accept chat. Please try again.');
     }
   };
 
@@ -296,7 +327,7 @@ function App() {
     e.preventDefault();
     if (!messageInput.trim() || !selectedChat || !currentUser || !socket) return;
     if (selectedChat.status !== 'accepted') {
-      setError('Chat must be accepted before sending messages');
+      showError('Chat must be accepted before sending messages');
       return;
     }
     const content = messageInput.trim();
@@ -516,6 +547,12 @@ function App() {
                   onClick={() => {
                     setSelectedChat(chat);
                     if (isMobile) setMobileSidebarOpen(false);
+                    if (currentUser && socket) {
+                      socket.emit('MESSAGE_READ', {
+                        chatId: chat._id,
+                        userId: currentUser._id,
+                      });
+                    }
                   }}
                 >
                   <div className="chat-item-header">
@@ -626,6 +663,9 @@ function App() {
                                 </div>
                               )}
                               {linkify(message.content)}
+                              {String(message.senderId) === String(currentUser._id) && message.readAt && (
+                                <div className="message-seen">Seen</div>
+                              )}
                             </div>
                             <div className="message-actions">
                               <button

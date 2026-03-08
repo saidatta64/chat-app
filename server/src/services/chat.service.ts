@@ -119,7 +119,8 @@ export class ChatService {
     })
       .populate('participants', 'username')
       .populate('initiatedBy', 'username')
-      .sort({ createdAt: -1 })
+      .populate('lastMessage', 'content createdAt senderId')
+      .sort({ lastMessageAt: -1, createdAt: -1 })
       .lean();
 
     return chats.map((chat: any) => {
@@ -129,6 +130,11 @@ export class ChatService {
       );
       return {
         ...base,
+        lastMessage: chat.lastMessage ? {
+          content: chat.lastMessage.content,
+          createdAt: chat.lastMessage.createdAt,
+          senderId: chat.lastMessage.senderId.toString(),
+        } : undefined,
         otherParticipant: other?.username != null
           ? { _id: other._id?.toString?.() ?? String(other), username: other.username }
           : undefined,
@@ -155,6 +161,8 @@ export class ChatService {
       initiatedBy,
       createdAt: chat.createdAt,
       acceptedAt: chat.acceptedAt,
+      lastMessageAt: chat.lastMessageAt,
+      lastMessage: chat.lastMessage,
     };
   }
 
@@ -266,6 +274,12 @@ export class ChatService {
     });
 
     const savedMessage = await message.save();
+
+    // Update chat lastMessage and timestamp
+    await Chat.findByIdAndUpdate(chatId, {
+      lastMessageAt: new Date(),
+      lastMessage: savedMessage._id,
+    });
     
     // If it's a reply, we need to populate it for the response
     if (replyToId) {
@@ -304,6 +318,27 @@ export class ChatService {
   }
 
   /**
+   * Mark all messages in a chat as read for a specific user
+   */
+  async markMessagesAsRead(chatId: string, userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(chatId) || !Types.ObjectId.isValid(userId)) {
+      throw new Error('Invalid chat ID or user ID');
+    }
+
+    // Update all messages in this chat not sent by this user and not already read
+    await Message.updateMany(
+      {
+        chatId: new Types.ObjectId(chatId),
+        senderId: { $ne: new Types.ObjectId(userId) },
+        readAt: { $exists: false },
+      },
+      {
+        $set: { readAt: new Date() },
+      }
+    );
+  }
+
+  /**
    * Convert IChat to ChatResponse
    */
   private toChatResponse(chat: IChat): ChatResponse {
@@ -314,6 +349,8 @@ export class ChatService {
       initiatedBy: chat.initiatedBy.toString(),
       createdAt: chat.createdAt,
       acceptedAt: chat.acceptedAt,
+      lastMessageAt: chat.lastMessageAt,
+      lastMessage: (chat as any).lastMessage,
     };
   }
 

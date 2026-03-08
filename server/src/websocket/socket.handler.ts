@@ -50,10 +50,15 @@ export class SocketHandler {
         try {
           await messageHandler.handleMessageSend(this.io, socket, data, onlineUsers);
         } catch (error: any) {
+          const errorMessage = process.env.NODE_ENV === 'production' 
+            ? 'Failed to send message. Please try again.' 
+            : (error.message || 'Failed to send message');
+          
           socket.emit('ERROR', {
-            error: error.message || 'Failed to send message',
-            message: 'An error occurred while sending the message',
+            error: errorMessage,
+            code: 'SEND_MESSAGE_FAILED'
           });
+          console.error(`WebSocket Error (MESSAGE_SEND):`, error);
         }
       });
 
@@ -62,10 +67,32 @@ export class SocketHandler {
         try {
           await messageHandler.handleMessageDelete(this.io, socket, data, onlineUsers);
         } catch (error: any) {
+          const errorMessage = process.env.NODE_ENV === 'production' 
+            ? 'Failed to delete message. Please try again.' 
+            : (error.message || 'Failed to delete message');
+            
           socket.emit('ERROR', {
-            error: error.message || 'Failed to delete message',
-            message: 'An error occurred while deleting the message',
+            error: errorMessage,
+            code: 'DELETE_MESSAGE_FAILED'
           });
+          console.error(`WebSocket Error (MESSAGE_DELETE):`, error);
+        }
+      });
+
+      // Handle message read status
+      socket.on('MESSAGE_READ', async (data) => {
+        try {
+          await messageHandler.handleMessageRead(this.io, socket, data, onlineUsers);
+        } catch (error: any) {
+          const errorMessage = process.env.NODE_ENV === 'production' 
+            ? 'Failed to mark messages as read.' 
+            : (error.message || 'Failed to mark messages as read');
+            
+          socket.emit('ERROR', {
+            error: errorMessage,
+            code: 'READ_MESSAGE_FAILED'
+          });
+          console.error(`WebSocket Error (MESSAGE_READ):`, error);
         }
       });
 

@@ -10,14 +10,17 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
@@ -39,6 +42,12 @@ interface Chat {
   initiatedBy: string;
   createdAt: string;
   acceptedAt?: string;
+  lastMessageAt?: string;
+  lastMessage?: {
+    content: string;
+    createdAt: string;
+    senderId: string;
+  };
   otherParticipant?: { _id: string; username: string };
 }
 
@@ -57,6 +66,7 @@ interface Message {
   content: string;
   replyTo?: ReplyTo;
   createdAt: string;
+  readAt?: string;
 }
 
 // IMPORTANT: point this to the same backend as your web client.
@@ -69,24 +79,24 @@ const API_URL =
 console.log('🔗 Mobile API URL:', API_URL);
 
 const theme = {
-  bgPage: '#0F1117',
-  bgPrimary: '#0D0F14',
-  bgSecondary: '#151823',
-  bgTertiary: '#1A1F2B',
-  bgHover: '#222633',
-  textPrimary: '#E6EAF2',
-  textSecondary: '#8B93A7',
-  accent: '#6366F1',
-  accentSoft: 'rgba(99, 102, 241, 0.18)',
-  bubbleSent: 'rgba(99, 102, 241, 0.22)',
-  bubbleSentBorder: 'rgba(99, 102, 241, 0.35)',
-  bubbleReceived: '#1A1F2B',
-  border: '#222633',
-  success: '#34D399',
-  successBg: 'rgba(52, 211, 153, 0.12)',
-  error: '#F87171',
-  errorBg: 'rgba(248, 113, 113, 0.12)',
-  warning: '#FBBF24',
+  bgPage: '#090a0f',
+  bgPrimary: '#0e0f14',
+  bgSecondary: '#1c1f2e',
+  bgTertiary: '#2a2f45',
+  bgHover: '#373c59',
+  textPrimary: '#ffffff',
+  textSecondary: '#949ba4',
+  accent: '#5865f2',
+  accentSoft: 'rgba(88, 101, 242, 0.18)',
+  bubbleSent: '#1c1f2e',
+  bubbleSentBorder: 'rgba(255, 255, 255, 0.08)',
+  bubbleReceived: '#161923',
+  border: '#1c1f2e',
+  success: '#23a55a',
+  successBg: 'rgba(35, 165, 90, 0.12)',
+  error: '#f23f42',
+  errorBg: 'rgba(242, 63, 66, 0.12)',
+  warning: '#f0b232',
 };
 
 function getDateKey(d: string) {
@@ -202,6 +212,8 @@ const App: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
   const messagesListRef = useRef<FlatList<any> | null>(null);
 
   // Toast helpers
@@ -231,8 +243,7 @@ const App: React.FC = () => {
         return;
       }
       if (Constants.appOwnership === 'expo') {
-        console.log('Push notifications are not fully supported in Expo Go. Please use a development build.');
-        return;
+        console.log('Registering for push notifications in Expo Go...');
       }
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
@@ -275,14 +286,14 @@ const App: React.FC = () => {
         `${API_URL}/api/chat/user/${currentUser._id}`,
       );
       const sorted = [...res.data].sort((a, b) => {
-        const aTime = new Date(a.acceptedAt ?? a.createdAt).getTime();
-        const bTime = new Date(b.acceptedAt ?? b.createdAt).getTime();
+        const aTime = new Date(a.lastMessageAt ?? a.acceptedAt ?? a.createdAt).getTime();
+        const bTime = new Date(b.lastMessageAt ?? b.acceptedAt ?? b.createdAt).getTime();
         return bTime - aTime;
       });
       setChats(sorted);
     } catch (err: any) {
       showError(
-        err?.response?.data?.error ?? 'Failed to load chats',
+        err?.response?.data?.error ?? 'Failed to load chats. Please check your connection.',
       );
     }
   }, [currentUser, showError]);
@@ -293,10 +304,19 @@ const App: React.FC = () => {
       const res = await axios.get<{
         data: Message[];
       }>(`${API_URL}/api/chat/${selectedChat._id}/messages?limit=100`);
-      setMessages(res.data.data ?? []);
+      const fetchedMessages = res.data.data ?? [];
+      setMessages(fetchedMessages);
+      
+      // If we are loading a chat, mark it as read immediately
+      if (currentUser && socket && fetchedMessages.length > 0) {
+        socket.emit('MESSAGE_READ', {
+          chatId: selectedChat._id,
+          userId: currentUser._id,
+        });
+      }
     } catch (err: any) {
       showError(
-        err?.response?.data?.error ?? 'Failed to load messages',
+        err?.response?.data?.error ?? 'Failed to load messages. Please check your connection.',
       );
     }
   }, [selectedChat, showError]);
@@ -333,7 +353,7 @@ const App: React.FC = () => {
 
     s.on('connect_error', () => {
       setConnectionStatus('disconnected');
-      showError(`Failed to connect to server at ${API_URL}`);
+      showError('Failed to connect to chat server. Please try again later.');
     });
 
     s.on('MESSAGE_RECEIVED', (data: any) => {
@@ -344,8 +364,31 @@ const App: React.FC = () => {
           }
           return [...prev, data.message];
         });
+        
+        // If we are in this chat and the message is not from us, tell the server we read it!
+        if (String(data.message.senderId) !== String(currentUser._id)) {
+          s.emit('MESSAGE_READ', {
+            chatId: data.chatId,
+            userId: currentUser._id,
+          });
+        }
       }
       loadChats();
+    });
+
+    s.on('MESSAGE_READ', (data: any) => {
+      if (data.chatId === selectedChat?._id) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            // Update messages sent by users OTHER than the one who just read the chat
+            // If user A sent a message, and user B marked it as read, then User A's view should show "seen"
+            if (String(m.senderId) !== String(data.userId) && !m.readAt) {
+              return { ...m, readAt: data.readAt };
+            }
+            return m;
+          }),
+        );
+      }
     });
 
     s.on('MESSAGE_DELETED', (data: any) => {
@@ -381,13 +424,12 @@ const App: React.FC = () => {
     };
   }, [API_URL, currentUser, selectedChat?._id, loadChats, showError, showSuccess]);
 
-  // Backend health check (like web app)
   useEffect(() => {
     axios
       .get(`${API_URL}/health`)
       .catch(() =>
         showError(
-          `Cannot connect to backend at ${API_URL}. Make sure the server is running.`,
+          'Cannot connect to backend server. Make sure the server is running.',
         ),
       );
   }, [showError]);
@@ -425,7 +467,7 @@ const App: React.FC = () => {
         err?.response?.data?.error ??
         (err?.response?.status === 401
           ? 'Invalid password'
-          : 'Failed to enter');
+          : 'Failed to enter. Please check your connection.');
       showError(msg);
     } finally {
       setLoading(false);
@@ -447,7 +489,7 @@ const App: React.FC = () => {
       showSuccess('Chat request sent!');
     } catch (err: any) {
       showError(
-        err?.response?.data?.error ?? 'Failed to create chat',
+        err?.response?.data?.error ?? 'Failed to create chat. Please try again.',
       );
     } finally {
       setLoading(false);
@@ -468,7 +510,7 @@ const App: React.FC = () => {
       showSuccess('Chat accepted!');
     } catch (err: any) {
       showError(
-        err?.response?.data?.error ?? 'Failed to accept chat',
+        err?.response?.data?.error ?? 'Failed to accept chat. Please try again.',
       );
     }
   };
@@ -503,12 +545,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteMessage = (messageId: string) => {
-    if (!socket || !currentUser) return;
+  const handleConfirmDelete = () => {
+    if (!socket || !currentUser || !messageToDelete) return;
     socket.emit('MESSAGE_DELETE', {
-      messageId,
+      messageId: messageToDelete,
       userId: currentUser._id,
     });
+    setMessageToDelete(null);
   };
 
   const handleLogout = () => {
@@ -578,57 +621,70 @@ const App: React.FC = () => {
     // Login screen, full-screen like web modal
     return (
       <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.loginContainer}>
-            <Text style={styles.appTitle}>💬 Edu App</Text>
-            <Text style={styles.subtitle}>
-            Enter your username and password to sign in or create an
-            account.
-          </Text>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Username</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your username"
-              placeholderTextColor={theme.textSecondary}
-              value={newUsername}
-              onChangeText={setNewUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password (min 6 characters)"
-              placeholderTextColor={theme.textSecondary}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              secureTextEntry
-            />
-          </View>
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-          <TouchableOpacity
-            style={[
-              styles.primaryButton,
-              loading && styles.disabledButton,
-            ]}
-            disabled={loading}
-            onPress={handleEnter}
+        <StatusBar style="light" translucent backgroundColor="transparent" />
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            {loading ? (
-              <ActivityIndicator color={theme.textPrimary} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Enter</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={[styles.loginContainer, { paddingTop: insets.top + 60 }]}>
+                <Text style={styles.appTitle}>💬 Edu App</Text>
+                <Text style={styles.subtitle}>
+                  Enter your username and password to sign in or create an
+                  account.
+                </Text>
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Username</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your username"
+                    placeholderTextColor={theme.textSecondary}
+                    value={newUsername}
+                    onChangeText={setNewUsername}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoFocus
+                  />
+                </View>
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your password (min 6 characters)"
+                    placeholderTextColor={theme.textSecondary}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry
+                  />
+                </View>
+                {error ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  style={[
+                    styles.primaryButton,
+                    loading && styles.disabledButton,
+                  ]}
+                  disabled={loading}
+                  onPress={handleEnter}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={theme.textPrimary} />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Enter</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </SafeAreaProvider>
     );
   }
@@ -637,26 +693,18 @@ const App: React.FC = () => {
 
   return (
     <SafeAreaProvider>
+      <StatusBar style="light" translucent backgroundColor="transparent" />
       <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: theme.bgPage }}
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
           <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            {isInChat && (
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => setSelectedChat(null)}
-              >
-                <Text style={styles.backButtonIcon}>{'‹'}</Text>
-              </TouchableOpacity>
-            )}
+        <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
             <Text style={styles.headerTitle}>💬 Chat</Text>
-          </View>
+
           <View style={styles.headerRight}>
             <View style={styles.userBadge}>
               <Text
@@ -710,6 +758,12 @@ const App: React.FC = () => {
                       style={styles.chatItem}
                       onPress={() => {
                         setSelectedChat(item);
+                        if (currentUser && socket) {
+                          socket.emit('MESSAGE_READ', {
+                            chatId: item._id,
+                            userId: currentUser._id,
+                          });
+                        }
                       }}
                     >
                       <View style={styles.chatItemHeader}>
@@ -732,6 +786,17 @@ const App: React.FC = () => {
                           {item.status}
                         </Text>
                       </View>
+                      {item.lastMessage && (
+                        <Text
+                          style={styles.chatItemLastMsg}
+                          numberOfLines={1}
+                        >
+                          {item.lastMessage.senderId === currentUser?._id
+                            ? 'You: '
+                            : ''}
+                          {item.lastMessage.content}
+                        </Text>
+                      )}
                       {isPending && !isInitiator && (
                         <TouchableOpacity
                           style={[
@@ -803,17 +868,15 @@ const App: React.FC = () => {
           <View style={styles.body}>
             {/* Chat header (participant name) */}
             <View style={styles.chatHeader}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setSelectedChat(null)}
+              >
+                <Text style={styles.backButtonIcon}>{'‹'}</Text>
+              </TouchableOpacity>
               <Text style={styles.chatHeaderName}>
                 {getOtherParticipantName(selectedChat)}
               </Text>
-              <TouchableOpacity
-                onPress={handleLogout}
-                style={styles.smallSecondaryButton}
-              >
-                <Text style={styles.smallSecondaryButtonText}>
-                  Logout
-                </Text>
-              </TouchableOpacity>
             </View>
 
             {/* Messages list */}
@@ -847,7 +910,22 @@ const App: React.FC = () => {
                             : styles.messageRowOther,
                         ]}
                       >
+                        <Text style={styles.messageTime}>
+                          {formatTime(message.createdAt)}
+                        </Text>
                         <View style={styles.messageBubbleWrapper}>
+                          {!isOwn && (
+                            <TouchableOpacity
+                              style={styles.iconButton}
+                              onPress={() =>
+                                setReplyingTo(message)
+                              }
+                            >
+                              <Text style={styles.iconButtonText}>
+                                ↩
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                           <View
                             style={[
                               styles.messageBubble,
@@ -887,26 +965,31 @@ const App: React.FC = () => {
                                 message._id,
                               )}
                             </Text>
+                            {isOwn && message.readAt && (
+                              <View style={styles.seenContainer}>
+                                <Text style={styles.seenText}>Seen</Text>
+                              </View>
+                            )}
                           </View>
-                          <View style={styles.messageActions}>
-                            <TouchableOpacity
-                              style={styles.iconButton}
-                              onPress={() =>
-                                setReplyingTo(message)
-                              }
-                            >
-                              <Text style={styles.iconButtonText}>
-                                ↩
-                              </Text>
-                            </TouchableOpacity>
-                            {isOwn && (
+                          {isOwn && (
+                            <View style={styles.messageActions}>
+                              <TouchableOpacity
+                                style={styles.iconButton}
+                                onPress={() =>
+                                  setReplyingTo(message)
+                                }
+                              >
+                                <Text style={styles.iconButtonText}>
+                                  ↩
+                                </Text>
+                              </TouchableOpacity>
                               <TouchableOpacity
                                 style={[
                                   styles.iconButton,
                                   styles.iconButtonDanger,
                                 ]}
                                 onPress={() =>
-                                  handleDeleteMessage(
+                                  setMessageToDelete(
                                     message._id,
                                   )
                                 }
@@ -919,12 +1002,9 @@ const App: React.FC = () => {
                                   🗑
                                 </Text>
                               </TouchableOpacity>
-                            )}
-                          </View>
+                            </View>
+                          )}
                         </View>
-                        <Text style={styles.messageTime}>
-                          {formatTime(message.createdAt)}
-                        </Text>
                       </View>
                     );
                   })}
@@ -987,6 +1067,36 @@ const App: React.FC = () => {
           </View>
         )}
 
+        {/* Delete Confirmation Modal */}
+        <Modal
+          transparent
+          visible={!!messageToDelete}
+          animationType="fade"
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Delete Message</Text>
+              <Text style={styles.modalMessage}>
+                Are you sure you want to delete this message? This action cannot be undone.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={() => setMessageToDelete(null)}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalDeleteButton}
+                  onPress={handleConfirmDelete}
+                >
+                  <Text style={styles.modalDeleteText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* Toasts */}
         {error ? (
           <View style={[styles.toast, styles.toastError]}>
@@ -998,9 +1108,9 @@ const App: React.FC = () => {
             <Text style={styles.toastText}>{success}</Text>
           </View>
         ) : null}
-        </View>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+          </View>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </SafeAreaProvider>
   );
 };
@@ -1011,7 +1121,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: theme.bgPage,
-    paddingTop: Platform.OS === 'android' ? (Constants.statusBarHeight || 24) + 16 : 0,
   },
   container: {
     flex: 1,
@@ -1019,9 +1128,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1215,6 +1322,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.errorBg,
     color: theme.error,
   },
+  chatItemLastMsg: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
   smallPrimaryButton: {
     borderRadius: 999,
     paddingHorizontal: 12,
@@ -1280,12 +1392,12 @@ const styles = StyleSheet.create({
   },
   chatHeader: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    backgroundColor: theme.bgPrimary,
+    gap: 12,
   },
   chatHeaderName: {
     color: theme.textPrimary,
@@ -1343,21 +1455,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   messageBubble: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   messageBubbleOwn: {
-    backgroundColor: theme.bubbleSent,
+    backgroundColor: theme.bgTertiary,
     borderWidth: 1,
     borderColor: theme.bubbleSentBorder,
-    borderBottomRightRadius: 4,
+    borderTopRightRadius: 4,
   },
   messageBubbleOther: {
-    backgroundColor: theme.bubbleReceived,
+    backgroundColor: theme.bgSecondary,
     borderWidth: 1,
-    borderColor: theme.border,
-    borderBottomLeftRadius: 4,
+    borderColor: theme.bubbleSentBorder,
+    borderTopLeftRadius: 4,
   },
   messageText: {
     color: theme.textPrimary,
@@ -1379,8 +1491,8 @@ const styles = StyleSheet.create({
   },
   iconButtonDanger: {},
   messageTime: {
-    marginTop: 2,
-    fontSize: 11,
+    marginBottom: 4,
+    fontSize: 10,
     color: theme.textSecondary,
     paddingHorizontal: 4,
   },
@@ -1437,16 +1549,16 @@ const styles = StyleSheet.create({
   },
   messageInput: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     maxHeight: 120,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.border,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: theme.accent,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
     color: theme.textPrimary,
     fontSize: 15,
-    backgroundColor: theme.bgTertiary,
+    backgroundColor: 'transparent',
   },
   link: {
     color: theme.accent,
@@ -1470,6 +1582,69 @@ const styles = StyleSheet.create({
   toastText: {
     color: theme.textPrimary,
     fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    width: '100%',
+    backgroundColor: theme.bgSecondary,
+    borderRadius: 16,
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: theme.error,
+    marginBottom: 16,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: theme.textSecondary,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    backgroundColor: theme.bgTertiary,
+  },
+  modalCancelText: {
+    color: theme.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modalDeleteButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    backgroundColor: theme.error,
+  },
+  modalDeleteText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  seenContainer: {
+    alignSelf: 'flex-end',
+    marginTop: 2,
+    marginRight: -4,
+  },
+  seenText: {
+    fontSize: 9,
+    color: theme.accent,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
 });
 

@@ -100,14 +100,22 @@ chatService.acceptChat = async (chatId: string, userId: string) => {
 // Error handling middleware (must be after routes)
 app.use((err: any, _req: Request, res: Response, _next: any) => {
   const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal server error';
+  let message = err.message || 'Internal server error';
   
-  console.error('Error:', err);
+  // Sanitize error message for production
+  if (process.env.NODE_ENV === 'production' && statusCode === 500) {
+    message = 'An unexpected error occurred. Please try again later.';
+  }
+
+  console.error(`[${new Date().toISOString()}] Error ${statusCode}:`, err);
   
   res.status(statusCode).json({
     error: message,
     statusCode,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: err.stack,
+      details: err.details || undefined
+    }),
   });
 });
 

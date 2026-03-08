@@ -37,6 +37,13 @@ const chatSchema = new Schema<IChat>(
     acceptedAt: {
       type: Date,
     },
+    lastMessageAt: {
+      type: Date,
+    },
+    lastMessage: {
+      type: Schema.Types.ObjectId,
+      ref: 'Message',
+    },
   },
   {
     timestamps: false,
@@ -48,6 +55,7 @@ chatSchema.index({ participants: 1 });
 chatSchema.index({ status: 1 });
 chatSchema.index({ initiatedBy: 1 });
 chatSchema.index({ createdAt: -1 });
+chatSchema.index({ lastMessageAt: -1 });
 
 const Chat: Model<IChat> = mongoose.model<IChat>('Chat', chatSchema);
 

@@ -41,6 +41,8 @@ export interface IChat extends Document {
   initiatedBy: Types.ObjectId;
   createdAt: Date;
   acceptedAt?: Date;
+  lastMessageAt?: Date;
+  lastMessage?: Types.ObjectId;
 }
 
 export interface CreateChatRequest {
@@ -55,6 +57,12 @@ export interface ChatResponse {
   initiatedBy: string;
   createdAt: Date;
   acceptedAt?: Date;
+  lastMessageAt?: Date;
+  lastMessage?: {
+    content: string;
+    createdAt: Date;
+    senderId: string;
+  };
   /** The other participant in the chat (for list display) */
   otherParticipant?: { _id: string; username: string };
 }

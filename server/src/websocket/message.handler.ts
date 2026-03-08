@@ -129,6 +129,53 @@ export class MessageHandler {
   }
 
   /**
+   * Handle MESSAGE_READ event
+   */
+  async handleMessageRead(
+    io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
+    socket: Socket<ClientToServerEvents, ServerToClientEvents>,
+    data: { chatId: string; userId: string },
+    onlineUsers: Map<string, string>
+  ): Promise<void> {
+    const { chatId, userId } = data;
+
+    if (!chatId || !userId) {
+      socket.emit('ERROR', {
+        error: 'Missing required fields',
+        message: 'chatId and userId are required',
+      });
+      return;
+    }
+
+    try {
+      // Mark all messages in the chat as read for this user
+      await chatService.markMessagesAsRead(chatId, userId);
+
+      // Get chat participants to notify them
+      const chat = await chatService.getChatById(chatId);
+      if (chat) {
+        const participants = chat.participants.map((p) => p.toString());
+        participants.forEach((pId) => {
+          const socketId = onlineUsers.get(pId);
+          if (socketId) {
+            io.to(socketId).emit('MESSAGE_READ', {
+              chatId,
+              userId,
+              readAt: new Date(),
+            });
+          }
+        });
+      }
+      console.log(`Messages in chat ${chatId} marked as read by user ${userId}`);
+    } catch (error: any) {
+      socket.emit('ERROR', {
+        error: error.message || 'Failed to mark messages as read',
+        message: 'An error occurred while marking messages as read',
+      });
+    }
+  }
+
+  /**
    * Notify users of new chat request
    */
   notifyChatRequest(
