@@ -4,10 +4,10 @@
     "slug": "edu",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/edu-cover.png",
+    "icon": "./assets/edu-icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/edu-cover.png",
+      "image": "./assets/edu-splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
