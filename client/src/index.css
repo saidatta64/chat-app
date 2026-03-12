@@ -496,6 +496,7 @@ body {
   display: flex;
   flex-direction: column;
   max-width: 78%;
+  min-width: 0;
   align-self: flex-start;
 }
 
@@ -510,6 +511,7 @@ body {
   align-items: center;
   gap: 8px;
   max-width: 100%;
+  min-width: 0;
 }
 
 .message.own .message-bubble-wrapper {
@@ -588,13 +590,30 @@ body {
   text-overflow: ellipsis;
 }
 
+@media (max-width: 600px) {
+  .reply-context-text {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
 .message-bubble {
   padding: 8px 12px;
   border-radius: 14px;
   font-size: 0.95rem;
   line-height: 1.4;
   word-break: break-word;
+  overflow-wrap: break-word;
   position: relative;
+  flex: 1;
+  min-width: 0;
 }
 
 .message-link {
