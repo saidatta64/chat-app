@@ -35,6 +35,7 @@ const App: React.FC = () => {
     createChatRequest,
     addMessageToChat,
     removeMessageFromChat,
+    updateMessageReadAt,
   } = useChat();
   const { expoPushToken, isLoading: pushTokenLoading, permissionStatus } = usePushNotifications();
   const { error, success, showError, showSuccess } = useToast();
@@ -43,10 +44,14 @@ const App: React.FC = () => {
   const [replyingTo, setReplyingTo] = React.useState<any>(null);
 
   // Socket event handlers
-  const { socket, connectionStatus } = useSocket(currentUser?._id ?? null, {
+  const { socket, connectionStatus, emitMessageRead } = useSocket(currentUser?._id ?? null, {
     onMessageReceived: (data) => {
       if (data.chatId === selectedChat?._id) {
         addMessageToChat(data.message);
+        // If we are currently in this chat, tell the server we read it immediately
+        if (currentUser && String(data.message.senderId) !== String(currentUser._id)) {
+          emitMessageRead(data.chatId, currentUser._id);
+        }
       }
       loadChats(currentUser?._id ?? '');
     },
@@ -55,6 +60,12 @@ const App: React.FC = () => {
         removeMessageFromChat(data.messageId);
       }
       showSuccess('Message removed');
+    },
+    onMessageRead: (data) => {
+      // data = { chatId, userId (the reader), readAt }
+      if (data.chatId === selectedChat?._id) {
+        updateMessageReadAt(data.chatId, data.userId, data.readAt);
+      }
     },
     onChatRequest: () => {
       loadChats(currentUser?._id ?? '');
@@ -79,12 +90,14 @@ const App: React.FC = () => {
     }
   }, [currentUser, loadChats]);
 
-  // Load messages when chat is selected
+  // Load messages when chat is selected + mark as read
   useEffect(() => {
-    if (selectedChat) {
+    if (selectedChat && currentUser) {
       loadMessages(selectedChat._id);
+      // Tell the server we've read this chat as soon as we open it
+      emitMessageRead(selectedChat._id, currentUser._id);
     }
-  }, [selectedChat, loadMessages]);
+  }, [selectedChat?._id]);
 
   // Health check and push token registration
   useEffect(() => {

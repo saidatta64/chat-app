@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -193,6 +193,17 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
   const inputRef = useRef<RNTextInput | null>(null);
   const [inputFocused, setInputFocused] = React.useState(false);
 
+  // Scroll to bottom whenever the message list changes — covers:
+  // • initial load, • sending a message, • receiving a new message
+  useEffect(() => {
+    if (messages.length === 0) return;
+    // Small timeout lets the FlatList finish laying out the new item
+    const t = setTimeout(() => {
+      messagesListRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [messages.length]);
+
   const groupedMessages = useMemo((): GroupedMessage[] => {
     const groups: GroupedMessage[] = [];
     let currentKey: string | null = null;
@@ -271,12 +282,6 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
             style={styles.messagesList}
             contentContainerStyle={styles.messagesContent}
             keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() =>
-              messagesListRef.current?.scrollToEnd({ animated: true })
-            }
-            onLayout={() =>
-              messagesListRef.current?.scrollToEnd({ animated: false })
-            }
             data={groupedMessages}
             keyExtractor={(g) => g.id}
             renderItem={({ item: group }) => (

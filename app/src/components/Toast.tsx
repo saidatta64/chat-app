@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../constants';
-import { commonStyles } from '../styles/common';
 
 interface ToastProps {
   message: string;
@@ -13,10 +13,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 24,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    zIndex: 9999, // Ensure it sits above other elements
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   toastError: {
     backgroundColor: theme.errorBg,
@@ -31,10 +36,13 @@ const styles = StyleSheet.create({
 });
 
 export const Toast: React.FC<ToastProps> = ({ message, type }) => {
+  const insets = useSafeAreaInsets();
+  
   return (
     <View
       style={[
         styles.toast,
+        { top: Math.max(insets.top, 20) + 10 },
         type === 'error' ? styles.toastError : styles.toastSuccess,
       ]}
     >

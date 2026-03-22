@@ -76,6 +76,16 @@ const styles = StyleSheet.create({
     color: theme.textSecondary,
     paddingHorizontal: 4,
   },
+  messageSeen: {
+    fontSize: 10,
+    color: theme.accent,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    fontStyle: 'italic',
+    paddingHorizontal: 4,
+    marginTop: 1,
+    opacity: 0.9,
+  },
   replyContext: {
     borderLeftWidth: 3,
     borderLeftColor: theme.accent,
@@ -156,6 +166,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       <Text style={styles.messageTime}>
         {formatTime(message.createdAt)}
       </Text>
+      {isOwn && message.readAt && (
+        <Text style={styles.messageSeen}>Seen</Text>
+      )}
     </View>
   );
 };

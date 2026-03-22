@@ -16,6 +16,7 @@ interface UseChatReturn {
   ) => Promise<void>;
   addMessageToChat: (message: Message) => void;
   removeMessageFromChat: (messageId: string) => void;
+  updateMessageReadAt: (chatId: string, readerUserId: string, readAt: string) => void;
   setMessages: (messages: Message[]) => void;
   setChats: (chats: Chat[]) => void;
 }
@@ -107,6 +108,25 @@ export function useChat(): UseChatReturn {
     setMessages((prev) => prev.filter((m) => m._id !== messageId));
   }, []);
 
+  // Stamp readAt on messages that WE sent but haven't been marked read yet.
+  // Called when the server fires MESSAGE_READ for the active chat.
+  // readerUserId = the person who just read the messages (NOT us).
+  const updateMessageReadAt = useCallback(
+    (chatId: string, readerUserId: string, readAt: string) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          // Only update messages in this chat, sent by someone OTHER than
+          // the reader (i.e. messages the reader just saw are ones we sent).
+          if (m.chatId === chatId && String(m.senderId) !== String(readerUserId) && !m.readAt) {
+            return { ...m, readAt };
+          }
+          return m;
+        })
+      );
+    },
+    []
+  );
+
   return {
     chats,
     messages,
@@ -117,6 +137,7 @@ export function useChat(): UseChatReturn {
     createChatRequest,
     addMessageToChat,
     removeMessageFromChat,
+    updateMessageReadAt,
     setMessages,
     setChats,
   };

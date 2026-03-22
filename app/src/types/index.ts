@@ -31,6 +31,7 @@ export interface Message {
   content: string;
   replyTo?: ReplyTo;
   createdAt: string;
+  readAt?: string; // set when the other participant reads the message
 }
 
 export interface MessagePayload {

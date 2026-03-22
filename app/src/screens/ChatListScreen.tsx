@@ -200,6 +200,11 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
                 </Text>
               </View>
             )}
+            <TouchableOpacity onPress={onLogout} style={{ opacity: 0.8, marginLeft: 6 }}>
+              <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '500' }}>
+                Logout
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -303,21 +308,6 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
             </Sheet>
           )}
         </View>
-
-        {/* Logout button in top right */}
-        <TouchableOpacity
-          onPress={onLogout}
-          style={{
-            position: 'absolute',
-            top: 50,
-            right: 16,
-            opacity: 0.6,
-          }}
-        >
-          <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
-            Logout
-          </Text>
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
