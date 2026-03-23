@@ -28,6 +28,7 @@ interface ChatMessagesScreenProps {
   replyingTo: Message | null;
   onReplyingToChange: (message: Message | null) => void;
   onBackPress: () => void;
+  connectionStatus: string;
 }
 
 const styles = StyleSheet.create({
@@ -62,6 +63,11 @@ const styles = StyleSheet.create({
   headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  connectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 
   // ── Messages list ────────────────────────────────────────────────────────
@@ -188,6 +194,7 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
   replyingTo,
   onReplyingToChange,
   onBackPress,
+  connectionStatus,
 }) => {
   const messagesListRef = useRef<FlatList<any> | null>(null);
   const inputRef = useRef<RNTextInput | null>(null);
@@ -274,6 +281,19 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
                 {getOtherParticipantName()}
               </Text>
             </View>
+            <View
+              style={[
+                styles.connectionDot,
+                {
+                  backgroundColor:
+                    connectionStatus === 'connected'
+                      ? theme.success
+                      : connectionStatus === 'connecting'
+                      ? theme.warning
+                      : theme.error,
+                },
+              ]}
+            />
           </View>
 
           {/* ── Messages list (flex: 1 — fills all remaining space) ── */}

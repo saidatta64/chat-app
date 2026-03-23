@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { theme } from '../constants';
 import { Chat, User } from '../types';
 import { Button, Sheet, TextInput } from '../components';
@@ -20,6 +22,7 @@ interface ChatListScreenProps {
   onAcceptChat: (chat: Chat) => Promise<void>;
   onLogout: () => void;
   loading: boolean;
+  connectionStatus: string;
 }
 
 const styles = StyleSheet.create({
@@ -58,6 +61,27 @@ const styles = StyleSheet.create({
     color: theme.accent,
     fontWeight: '600',
     fontSize: 13,
+  },
+  headerUserInfo: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  userProfileContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  connectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  userIdText: {
+    fontSize: 10,
+    color: theme.textSecondary,
+    fontWeight: '400',
+    marginTop: 2,
+    marginRight: 2,
   },
   body: {
     flex: 1,
@@ -157,6 +181,7 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
   onAcceptChat,
   onLogout,
   loading,
+  connectionStatus,
 }) => {
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatUserId, setNewChatUserId] = useState('');
@@ -171,6 +196,13 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
       setNewChatUserId('');
     } finally {
       setCreatingChat(false);
+    }
+  };
+
+  const handleCopyUserId = async () => {
+    if (currentUser?._id) {
+      await Clipboard.setStringAsync(currentUser._id);
+      Alert.alert('Copied', 'User ID copied to clipboard!');
     }
   };
 
@@ -194,10 +226,30 @@ export const ChatListScreen: React.FC<ChatListScreenProps> = ({
           </View>
           <View style={styles.headerRight}>
             {currentUser && (
-              <View style={styles.userBadge}>
-                <Text style={styles.userBadgeText} numberOfLines={1}>
-                  {currentUser.username}
-                </Text>
+              <View style={styles.headerUserInfo}>
+                <View style={styles.userProfileContainer}>
+                  <View
+                    style={[
+                      styles.connectionDot,
+                      {
+                        backgroundColor:
+                          connectionStatus === 'connected'
+                            ? theme.success
+                            : connectionStatus === 'connecting'
+                            ? theme.warning
+                            : theme.error,
+                      },
+                    ]}
+                  />
+                  <View style={styles.userBadge}>
+                    <Text style={styles.userBadgeText} numberOfLines={1}>
+                      {currentUser.username}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={handleCopyUserId}>
+                  <Text style={styles.userIdText}>ID: {currentUser._id}</Text>
+                </TouchableOpacity>
               </View>
             )}
             <TouchableOpacity onPress={onLogout} style={{ opacity: 0.8, marginLeft: 6 }}>

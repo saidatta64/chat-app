@@ -269,6 +269,7 @@ const App: React.FC = () => {
           replyingTo={replyingTo}
           onReplyingToChange={setReplyingTo}
           onBackPress={() => setSelectedChat(null)}
+          connectionStatus={connectionStatus}
         />
         {error && <Toast message={error} type="error" />}
         {success && <Toast message={success} type="success" />}
@@ -286,6 +287,7 @@ const App: React.FC = () => {
         onAcceptChat={handleAcceptChat}
         onLogout={handleLogout}
         loading={chatLoading}
+        connectionStatus={connectionStatus}
       />
       {error && <Toast message={error} type="error" />}
       {success && <Toast message={success} type="success" />}
