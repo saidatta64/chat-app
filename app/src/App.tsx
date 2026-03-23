@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import axios from 'axios';
 import * as Notifications from 'expo-notifications';
@@ -197,10 +198,24 @@ const App: React.FC = () => {
   // Handle delete message
   const handleDeleteMessage = (messageId: string) => {
     if (!socket || !currentUser) return;
-    socket.emit('MESSAGE_DELETE', {
-      messageId,
-      userId: currentUser._id,
-    });
+
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            socket.emit('MESSAGE_DELETE', {
+              messageId,
+              userId: currentUser._id,
+            });
+          },
+        },
+      ]
+    );
   };
 
   // Handle create chat
