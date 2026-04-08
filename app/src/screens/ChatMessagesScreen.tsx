@@ -324,7 +324,7 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
 
           {/* ── Messages list (flex: 1 — fills all remaining space) ── */}
           <ImageBackground
-            source={require('../../assets/chat-wallpaper.png')}
+            source={require('../../assets/chat-wallpaper.jpg')}
             style={styles.messagesBackground}
             imageStyle={styles.messagesBackgroundImage}
             resizeMode="cover"
