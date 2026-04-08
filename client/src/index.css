@@ -12,24 +12,24 @@
   -moz-osx-font-smoothing: grayscale;
 
   /* Surfaces */
-  --bg-page: #0F1117;
-  --bg-primary: #0D0F14;
-  --bg-secondary: #151823;
-  --bg-tertiary: #1A1F2B;
-  --bg-hover: #222633;
-  --border: #222633;
+  --bg-page: #0B141A;
+  --bg-primary: #111B21;
+  --bg-secondary: #202C33;
+  --bg-tertiary: #2A3942;
+  --bg-hover: #233138;
+  --border: #2A3942;
   /* Text */
-  --text-primary: #E6EAF2;
-  --text-secondary: #8B93A7;
-  --text-muted: #8B93A7;
+  --text-primary: #E9EDEF;
+  --text-secondary: #8696A0;
+  --text-muted: #8696A0;
   /* Accent */
-  --accent: #6366F1;
-  --accent-hover: #818CF8;
-  --accent-soft: rgba(99, 102, 241, 0.18);
+  --accent: #00A884;
+  --accent-hover: #00BF96;
+  --accent-soft: rgba(0, 168, 132, 0.18);
   /* Bubbles */
-  --bubble-sent: rgba(99, 102, 241, 0.22);
-  --bubble-sent-border: rgba(99, 102, 241, 0.35);
-  --bubble-received: #1A1F2B;
+  --bubble-sent: #005C4B;
+  --bubble-sent-border: #005C4B;
+  --bubble-received: #202C33;
   /* Status */
   --success: #34D399;
   --success-bg: rgba(52, 211, 153, 0.12);
@@ -37,7 +37,7 @@
   --error-bg: rgba(248, 113, 113, 0.12);
   --warning: #FBBF24;
   /* Misc */
-  --radius: 12px;
+  --radius: 10px;
   --radius-sm: 8px;
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
   --transition: 0.2s ease;
@@ -470,6 +470,11 @@ body {
   flex-direction: column;
   gap: 10px;
   align-items: stretch;
+  background-color: var(--bg-page);
+  background-image:
+    radial-gradient(circle at 25px 25px, rgba(255, 255, 255, 0.03) 2px, transparent 0),
+    radial-gradient(circle at 75px 75px, rgba(255, 255, 255, 0.02) 2px, transparent 0);
+  background-size: 100px 100px;
 }
 
 .message-row {
@@ -484,8 +489,8 @@ body {
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
+  background: #182229;
+  border: 1px solid #1d2a31;
   border-radius: 999px;
   padding: 5px 12px;
   align-self: center;
@@ -738,8 +743,8 @@ body {
   font-size: 0.95rem;
   color: var(--text-primary);
   background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid transparent;
+  border-radius: 22px;
   outline: none;
   transition: border-color var(--transition);
   min-width: 0;
@@ -755,17 +760,22 @@ body {
 }
 
 .input-area button {
-  padding: 11px 18px;
-  font-size: 0.92rem;
-  font-weight: 500;
-  color: var(--text-primary);
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0B141A;
   background: var(--accent);
   border: none;
-  border-radius: var(--radius);
+  border-radius: 50%;
   cursor: pointer;
   transition: background var(--transition);
   white-space: nowrap;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .input-area button:hover:not(:disabled) {

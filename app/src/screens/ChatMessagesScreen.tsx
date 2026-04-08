@@ -6,7 +6,6 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   TouchableOpacity,
   StyleSheet,
   TextInput as RNTextInput,
@@ -72,9 +71,11 @@ const styles = StyleSheet.create({
   // ── Messages list ────────────────────────────────────────────────────────
   messagesList: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   messagesBackground: {
     flex: 1,
+    backgroundColor: theme.bgPage,
   },
   messagesBackgroundImage: {
     opacity: 0.22,
@@ -85,6 +86,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 10,
+    backgroundColor: 'transparent',
   },
   dateSeparator: {
     alignSelf: 'center',
@@ -287,8 +289,11 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
-      {/* SafeAreaView from react-native handles top inset (status bar) */}
-      <SafeAreaView style={[commonStyles.safeArea, { paddingBottom: 0 }]}>
+      {/* Top safe-area only; bottom inset is handled by input row container. */}
+      <SAFESafeAreaView
+        edges={['top']}
+        style={[commonStyles.safeArea, { paddingBottom: 0 }]}
+      >
         {/* Inner flex column: header | list | reply-preview | input */}
         <View style={{ flex: 1, flexDirection: 'column' }}>
 
@@ -332,6 +337,7 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
               bounces={false}
               alwaysBounceVertical={false}
               keyboardShouldPersistTaps="handled"
+              contentInsetAdjustmentBehavior="never"
               data={groupedMessages}
               keyExtractor={(g) => g.id}
               renderItem={({ item: group }) => (
@@ -425,7 +431,7 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
           </SAFESafeAreaView>
 
         </View>
-      </SafeAreaView>
+      </SAFESafeAreaView>
     </KeyboardAvoidingView>
   );
 };

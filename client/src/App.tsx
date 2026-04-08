@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
 
-const API_URL =
-  (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000';
+const API_URL = (
+  ((import.meta as any).env?.VITE_API_URL as string | undefined)?.trim() ||
+  'https://chat-app-1-a804.onrender.com'
+).replace(/\/+$/, '');
 
 console.log('🔗 Frontend API URL:', API_URL);
 
@@ -198,7 +200,12 @@ function App() {
   // Initialize socket
   useEffect(() => {
     if (currentUser) {
-      const newSocket = io(API_URL, { transports: ['websocket'] });
+      const newSocket = io(API_URL, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        timeout: 10000,
+      });
 
       newSocket.on('connect', () => {
         setConnectionStatus('connected');
@@ -719,7 +726,9 @@ function App() {
                   onChange={(e) => setMessageInput(e.target.value)}
                   placeholder="Type a message…"
                 />
-                <button type="submit" disabled={!messageInput.trim()}>Send</button>
+                <button type="submit" disabled={!messageInput.trim()} aria-label="Send message">
+                  ➤
+                </button>
               </form>
             </>
           )}

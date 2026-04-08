@@ -43,7 +43,12 @@ export function useSocket(
     }
 
     setConnectionStatus('connecting');
-    const s = io(API_URL, { transports: ['websocket'] });
+    const s = io(API_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      timeout: 10000,
+    });
     socketRef.current = s;
 
     s.on('connect', () => {
