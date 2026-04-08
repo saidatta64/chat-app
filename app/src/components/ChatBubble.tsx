@@ -14,7 +14,7 @@ interface ChatBubbleProps {
 
 const styles = StyleSheet.create({
   messageRow: {
-    marginVertical: 4,
+    marginVertical: 2,
     maxWidth: '80%',
     flexShrink: 1,
   },
@@ -33,23 +33,19 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   messageBubble: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     flex: 1,
     flexShrink: 1,
   },
   messageBubbleOwn: {
     backgroundColor: theme.bubbleSent,
-    borderWidth: 1,
-    borderColor: theme.bubbleSentBorder,
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 2,
   },
   messageBubbleOther: {
     backgroundColor: theme.bubbleReceived,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderBottomLeftRadius: 4,
+    borderBottomLeftRadius: 2,
   },
   messageText: {
     color: theme.textPrimary,
@@ -59,7 +55,8 @@ const styles = StyleSheet.create({
   },
   messageActions: {
     flexDirection: 'row',
-    marginLeft: 6,
+    marginLeft: 4,
+    opacity: 0.55,
   },
   iconButton: {
     paddingHorizontal: 6,
@@ -72,7 +69,7 @@ const styles = StyleSheet.create({
   },
   messageTime: {
     marginTop: 2,
-    fontSize: 11,
+    fontSize: 10,
     color: theme.textSecondary,
     paddingHorizontal: 4,
   },

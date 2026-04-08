@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -13,7 +14,7 @@ import {
 import { SafeAreaView as SAFESafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../constants';
 import { Chat, Message, User } from '../types';
-import { Button, ChatBubble } from '../components';
+import { ChatBubble } from '../components';
 import { commonStyles } from '../styles/common';
 import { getDateKey, formatDateLabel } from '../utils/formatting';
 
@@ -34,10 +35,8 @@ interface ChatMessagesScreenProps {
 const styles = StyleSheet.create({
   // ── Header ──────────────────────────────────────────────────────────────
   chatHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -46,19 +45,18 @@ const styles = StyleSheet.create({
   },
   chatHeaderName: {
     color: theme.textPrimary,
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '600',
   },
   backButton: {
-    marginRight: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: theme.bgTertiary,
+    marginRight: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   backButtonIcon: {
-    color: theme.textSecondary,
-    fontSize: 18,
+    color: theme.textPrimary,
+    fontSize: 28,
+    lineHeight: 28,
   },
   headerContainer: {
     flexDirection: 'row',
@@ -68,29 +66,36 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+    marginRight: 4,
   },
 
   // ── Messages list ────────────────────────────────────────────────────────
   messagesList: {
     flex: 1,
   },
+  messagesBackground: {
+    flex: 1,
+  },
+  messagesBackgroundImage: {
+    opacity: 0.22,
+  },
   messagesContent: {
-    paddingHorizontal: 12,
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 10,
     paddingTop: 8,
-    paddingBottom: 8,
+    paddingBottom: 10,
   },
   dateSeparator: {
     alignSelf: 'center',
-    borderRadius: 999,
-    paddingHorizontal: 12,
+    borderRadius: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    backgroundColor: theme.bgTertiary,
-    borderWidth: 1,
-    borderColor: theme.border,
-    marginVertical: 4,
+    backgroundColor: '#182229',
+    marginVertical: 6,
   },
   dateSeparatorText: {
-    color: theme.textSecondary,
+    color: '#D1D7DB',
     fontSize: 11,
     fontWeight: '500',
   },
@@ -148,32 +153,48 @@ const styles = StyleSheet.create({
   inputRow: {
     flexShrink: 0,
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 10,
-    paddingTop: 8,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 6,
     backgroundColor: theme.bgSecondary,
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
   },
   messageInput: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 120,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.border,
+    minHeight: 42,
+    maxHeight: 110,
+    borderRadius: 22,
+    borderWidth: 0,
     paddingHorizontal: 14,
     // Symmetric vertical padding so the text sits centred in single-line mode
     // and the input grows upward for multiline.
     paddingTop: Platform.OS === 'ios' ? 10 : 8,
     paddingBottom: Platform.OS === 'ios' ? 10 : 8,
-    color: theme.textPrimary,
-    fontSize: 15,
+    color: '#E9EDEF',
+    fontSize: 16,
     backgroundColor: theme.bgTertiary,
   },
   messageInputFocused: {
-    borderColor: theme.accent,
+    borderWidth: 1,
+    borderColor: '#3C4A52',
+  },
+  sendButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: theme.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.45,
+  },
+  sendButtonText: {
+    color: '#0B141A',
+    fontSize: 20,
+    fontWeight: '700',
+    marginLeft: 1,
   },
 });
 
@@ -297,37 +318,47 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
           </View>
 
           {/* ── Messages list (flex: 1 — fills all remaining space) ── */}
-          <FlatList
-            ref={messagesListRef}
-            style={styles.messagesList}
-            contentContainerStyle={styles.messagesContent}
-            keyboardShouldPersistTaps="handled"
-            data={groupedMessages}
-            keyExtractor={(g) => g.id}
-            renderItem={({ item: group }) => (
-              <View>
-                <View style={styles.dateSeparator}>
-                  <Text style={styles.dateSeparatorText}>
-                    {formatDateLabel(group.date)}
-                  </Text>
+          <ImageBackground
+            source={require('../../assets/chat-wallpaper.png')}
+            style={styles.messagesBackground}
+            imageStyle={styles.messagesBackgroundImage}
+            resizeMode="cover"
+          >
+            <FlatList
+              ref={messagesListRef}
+              style={styles.messagesList}
+              contentContainerStyle={styles.messagesContent}
+              overScrollMode="never"
+              bounces={false}
+              alwaysBounceVertical={false}
+              keyboardShouldPersistTaps="handled"
+              data={groupedMessages}
+              keyExtractor={(g) => g.id}
+              renderItem={({ item: group }) => (
+                <View>
+                  <View style={styles.dateSeparator}>
+                    <Text style={styles.dateSeparatorText}>
+                      {formatDateLabel(group.date)}
+                    </Text>
+                  </View>
+                  {group.items.map((message: Message) => {
+                    const isOwn =
+                      String(message.senderId) === String(currentUser?._id);
+                    return (
+                      <ChatBubble
+                        key={message._id}
+                        message={message}
+                        isOwn={isOwn}
+                        currentUserId={currentUser?._id ?? ''}
+                        onReply={onReplyingToChange}
+                        onDelete={onDeleteMessage}
+                      />
+                    );
+                  })}
                 </View>
-                {group.items.map((message: Message) => {
-                  const isOwn =
-                    String(message.senderId) === String(currentUser?._id);
-                  return (
-                    <ChatBubble
-                      key={message._id}
-                      message={message}
-                      isOwn={isOwn}
-                      currentUserId={currentUser?._id ?? ''}
-                      onReply={onReplyingToChange}
-                      onDelete={onDeleteMessage}
-                    />
-                  );
-                })}
-              </View>
-            )}
-          />
+              )}
+            />
+          </ImageBackground>
 
           {/* ── Reply preview (slides in above input, flex-shrink: 0) ── */}
           {replyingTo && (
@@ -380,13 +411,17 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
               blurOnSubmit={false}
               returnKeyType="default"
             />
-            <Button
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!messageInput.trim() || !canSendMessage) &&
+                  styles.sendButtonDisabled,
+              ]}
               onPress={onSendMessage}
               disabled={!messageInput.trim() || !canSendMessage}
-              size="small"
             >
-              Send
-            </Button>
+              <Text style={styles.sendButtonText}>➤</Text>
+            </TouchableOpacity>
           </SAFESafeAreaView>
 
         </View>

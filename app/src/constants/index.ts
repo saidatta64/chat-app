@@ -1,28 +1,30 @@
-export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const DEFAULT_API_URL = 'https://chat-app-1-a804.onrender.com';
+const envApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+
+export const API_URL = (envApiUrl || DEFAULT_API_URL).replace(/\/+$/, '');
 
 console.log('🔗 Mobile API URL:', API_URL);
 
 export const theme = {
-  bgPage: '#0F1117',
-  bgPrimary: '#0D0F14',
-  bgSecondary: '#151823',
-  bgTertiary: '#1A1F2B',
-  bgHover: '#222633',
-  textPrimary: '#E6EAF2',
-  textSecondary: '#8B93A7',
-  accent: '#6366F1',
-  accentSoft: 'rgba(99, 102, 241, 0.18)',
-  bubbleSent: 'rgba(99, 102, 241, 0.22)',
-  bubbleSentBorder: 'rgba(99, 102, 241, 0.35)',
-  bubbleReceived: '#1A1F2B',
-  border: '#222633',
-  success: '#34D399',
-  successBg: 'rgba(52, 211, 153, 0.12)',
-  error: '#F87171',
-  errorBg: 'rgba(248, 113, 113, 0.12)',
-  warning: '#FBBF24',
-  warningBg: 'rgba(251, 191, 36, 0.12)',
+  bgPage: '#0B141A',
+  bgPrimary: '#111B21',
+  bgSecondary: '#202C33',
+  bgTertiary: '#2A3942',
+  bgHover: '#233138',
+  textPrimary: '#E9EDEF',
+  textSecondary: '#8696A0',
+  accent: '#00A884',
+  accentSoft: 'rgba(0, 168, 132, 0.18)',
+  bubbleSent: '#005C4B',
+  bubbleSentBorder: '#005C4B',
+  bubbleReceived: '#202C33',
+  border: '#2A3942',
+  success: '#25D366',
+  successBg: 'rgba(37, 211, 102, 0.12)',
+  error: '#F15C6D',
+  errorBg: 'rgba(241, 92, 109, 0.12)',
+  warning: '#FFD279',
+  warningBg: 'rgba(255, 210, 121, 0.12)',
 };
 
 export const TOAST_DURATION = {
