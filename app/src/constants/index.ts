@@ -1,8 +1,8 @@
 const DEFAULT_API_URL = 'https://chat-app-1-a804.onrender.com';
 
-// Keep Render URL as the source of truth so stale local env values
-// cannot accidentally point the mobile app to an older backend.
-export const API_URL = DEFAULT_API_URL.replace(/\/+$/, '');
+const envApiUrl = (process.env.EXPO_PUBLIC_API_URL ?? '').trim();
+
+export const API_URL = (envApiUrl || DEFAULT_API_URL).replace(/\/+$/, '');
 
 console.log('🔗 Mobile API URL:', API_URL);
 

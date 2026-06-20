@@ -24,6 +24,14 @@ const messageSchema = new Schema<IMessage>(
       type: Schema.Types.ObjectId,
       ref: 'Message',
     },
+    linkPreview: {
+      url: { type: String },
+      title: { type: String },
+      description: { type: String },
+      imageUrl: { type: String },
+      siteName: { type: String },
+      isVideo: { type: Boolean, default: false },
+    },
     createdAt: {
       type: Date,
       default: Date.now,

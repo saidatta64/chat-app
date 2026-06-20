@@ -37,6 +37,13 @@ export function formatTime(d: string | Date): string {
   });
 }
 
+/** First http(s) URL in message text — kept in sync with server link preview extraction. */
+export function extractFirstHttpUrl(text: string | null | undefined): string | null {
+  if (text === null || text === undefined) return null;
+  const m = String(text).match(/(https?:\/\/[^\s<>"]+)/i);
+  return m ? m[1] : null;
+}
+
 /**
  * Linkify helper for React Native: splits text into segments and makes URLs tappable.
  * Returns an array of <Text> nodes (safe to render inside a parent <Text> or as children).

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
 
@@ -6,6 +6,8 @@ const API_URL = (
   ((import.meta as any).env?.VITE_API_URL as string | undefined)?.trim() ||
   'https://chat-app-1-a804.onrender.com'
 ).replace(/\/+$/, '');
+
+const MESSAGES_PAGE_SIZE = 50;
 
 console.log('🔗 Frontend API URL:', API_URL);
 
@@ -25,6 +27,15 @@ interface Chat {
   otherParticipant?: { _id: string; username: string };
 }
 
+interface LinkPreview {
+  url: string;
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  siteName?: string;
+  isVideo?: boolean;
+}
+
 interface Message {
   _id: string;
   chatId: string;
@@ -37,8 +48,87 @@ interface Message {
     senderId: string;
     senderName?: string;
   };
+  linkPreview?: LinkPreview;
   createdAt: string;
   readAt?: string;
+}
+
+interface MessagesPagination {
+  page: number;
+  totalPages: number;
+  total: number;
+  hasMore: boolean;
+}
+
+function extractFirstHttpUrl(text: string | null | undefined): string | null {
+  if (text == null) return null;
+  const m = String(text).match(/(https?:\/\/[^\s<>"]+)/i);
+  return m ? m[1] : null;
+}
+
+function hostnameOnly(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+function MessageLinkPreviewHydrator({
+  message,
+  patchMessage,
+}: {
+  message: Message;
+  patchMessage: (id: string, patch: Partial<Message>) => void;
+}) {
+  const attemptKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (message.linkPreview) return;
+    const url = extractFirstHttpUrl(message.content);
+    if (!url) return;
+    const key = `${message._id}:${url}`;
+    if (attemptKey.current === key) return;
+    attemptKey.current = key;
+    let cancelled = false;
+    axios
+      .get<{ preview: LinkPreview }>(`${API_URL}/api/chat/link-preview`, { params: { url } })
+      .then((res) => {
+        if (!cancelled && res.data.preview) {
+          patchMessage(message._id, { linkPreview: res.data.preview });
+        }
+      })
+      .catch(() => { });
+    return () => {
+      cancelled = true;
+    };
+  }, [message._id, message.content, message.linkPreview, patchMessage]);
+  return null;
+}
+
+function LinkPreviewCard({ lp }: { lp: LinkPreview }) {
+  const open = () => window.open(lp.url, '_blank', 'noopener,noreferrer');
+  const showImage = !!lp.imageUrl;
+  const site = lp.siteName ?? hostnameOnly(lp.url);
+  const hasBody = !!(lp.title || site);
+  if (!showImage && !hasBody) return null;
+  return (
+    <button type="button" className="link-preview-card" onClick={open}>
+      {showImage ? (
+        <div className="link-preview-thumb">
+          <img src={lp.imageUrl} alt="" referrerPolicy="no-referrer" />
+          {lp.isVideo ? (
+            <span className="link-preview-play" aria-hidden>
+              {'\u25B6'}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="link-preview-body">
+        {lp.title ? <div className="link-preview-title">{lp.title}</div> : null}
+        <div className="link-preview-site">{site}</div>
+      </div>
+    </button>
+  );
 }
 
 // ── Visual Viewport hook ──────────────────────────────────────────────────
@@ -103,6 +193,24 @@ function App() {
   // Reply feature
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messageRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
+  const [messagesPagination, setMessagesPagination] = useState<MessagesPagination | null>(null);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [otherUserTyping, setOtherUserTyping] = useState(false);
+  const lastMessageIdRef = useRef<string | null>(null);
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingActiveRef = useRef(false);
+  const selectedChatRef = useRef<Chat | null>(null);
+  const currentUserRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   // Custom confirmation modal state
   const [confirmModal, setConfirmModal] = useState<{
@@ -149,14 +257,48 @@ function App() {
     }
   }, [currentUser, showError]);
 
+  const patchMessage = useCallback((messageId: string, patch: Partial<Message>) => {
+    setMessages((prev) =>
+      prev.map((m) => (m._id === messageId ? { ...m, ...patch } : m)),
+    );
+  }, []);
+
+  const scrollToMessage = useCallback((messageId: string) => {
+    const id = String(messageId);
+    const el = messageRowRefs.current[id];
+    const container = messagesContainerRef.current;
+    if (!el || !container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const relativeTop =
+      elRect.top - containerRect.top + container.scrollTop;
+    const targetScroll =
+      relativeTop - container.clientHeight / 2 + el.clientHeight / 2;
+
+    container.scrollTo({
+      top: Math.max(0, targetScroll),
+      behavior: 'smooth',
+    });
+    setHighlightMessageId(id);
+    window.setTimeout(() => setHighlightMessageId(null), 2200);
+  }, []);
+
   const loadMessages = useCallback(async () => {
     if (!selectedChat) return;
     try {
-      const res = await axios.get(`${API_URL}/api/chat/${selectedChat._id}/messages?limit=100`);
+      const res = await axios.get(
+        `${API_URL}/api/chat/${selectedChat._id}/messages?page=1&limit=${MESSAGES_PAGE_SIZE}`,
+      );
       const fetchedMessages = res.data.data || [];
       setMessages(fetchedMessages);
-      
-      // NEW: mark as read immediately on load
+      setMessagesPagination({
+        page: res.data.page,
+        totalPages: res.data.totalPages,
+        total: res.data.total,
+        hasMore: res.data.page < res.data.totalPages,
+      });
+
       if (currentUser && socket && fetchedMessages.length > 0) {
         socket.emit('MESSAGE_READ', {
           chatId: selectedChat._id,
@@ -166,14 +308,102 @@ function App() {
     } catch (err: any) {
       showError(err.response?.data?.error || 'Failed to load messages. Please check your connection.');
     }
-  }, [selectedChat, showError]);
+  }, [selectedChat, showError, currentUser, socket]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedChat || !messagesPagination?.hasMore || loadingOlderMessages) return;
+
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+
+    setLoadingOlderMessages(true);
+    try {
+      const nextPage = messagesPagination.page + 1;
+      const res = await axios.get(
+        `${API_URL}/api/chat/${selectedChat._id}/messages?page=${nextPage}&limit=${MESSAGES_PAGE_SIZE}`,
+      );
+      const older = res.data.data || [];
+
+      setMessages((prev) => {
+        const ids = new Set(prev.map((m) => m._id));
+        const uniqueOlder = older.filter((m: Message) => !ids.has(m._id));
+        return [...uniqueOlder, ...prev];
+      });
+
+      setMessagesPagination({
+        page: res.data.page,
+        totalPages: res.data.totalPages,
+        total: res.data.total,
+        hasMore: res.data.page < res.data.totalPages,
+      });
+
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop =
+            container.scrollHeight - prevScrollHeight + prevScrollTop;
+        }
+      });
+    } catch (err: any) {
+      showError(err.response?.data?.error || 'Failed to load older messages.');
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  }, [selectedChat, messagesPagination, loadingOlderMessages, showError]);
+
+  const stopTypingIndicator = useCallback(() => {
+    const chat = selectedChatRef.current;
+    const user = currentUserRef.current;
+    if (!chat || !user || !socket) return;
+    if (typingStopTimerRef.current) {
+      clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = null;
+    }
+    if (isTypingActiveRef.current) {
+      socket.emit('TYPING', { chatId: chat._id, userId: user._id, isTyping: false });
+      isTypingActiveRef.current = false;
+    }
+  }, [socket]);
+
+  const handleMessageInputChange = (text: string) => {
+    setMessageInput(text);
+    if (!selectedChat || !currentUser || !socket) return;
+
+    if (text.trim()) {
+      if (!isTypingActiveRef.current) {
+        socket.emit('TYPING', {
+          chatId: selectedChat._id,
+          userId: currentUser._id,
+          isTyping: true,
+        });
+        isTypingActiveRef.current = true;
+      }
+      if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = setTimeout(stopTypingIndicator, 2000);
+    } else {
+      stopTypingIndicator();
+    }
+  };
 
   useEffect(() => { if (currentUser) loadChats(); }, [currentUser, loadChats]);
-  useEffect(() => { if (selectedChat) loadMessages(); else setMessages([]); }, [selectedChat, loadMessages]);
+  useEffect(() => {
+    if (selectedChat) {
+      lastMessageIdRef.current = null;
+      loadMessages();
+      setOtherUserTyping(false);
+    } else {
+      setMessages([]);
+      setMessagesPagination(null);
+      lastMessageIdRef.current = null;
+    }
+  }, [selectedChat?._id, loadMessages]);
 
-  // Scroll messages to bottom when entering chat or when messages change
+  // Scroll to bottom only when a new message arrives at the end
   useEffect(() => {
     if (!selectedChat || messages.length === 0) return;
+    const lastId = messages[messages.length - 1]._id;
+    if (lastMessageIdRef.current === lastId) return;
+    lastMessageIdRef.current = lastId;
     const el = messagesContainerRef.current;
     if (el) {
       el.scrollTop = el.scrollHeight;
@@ -234,11 +464,9 @@ function App() {
         loadChats();
       });
       newSocket.on('MESSAGE_READ', (data) => {
-        if (data.chatId === selectedChat?._id) {
+        if (data.chatId === selectedChatRef.current?._id) {
           setMessages((prev) =>
             prev.map((m) => {
-              // Update messages sent by users OTHER than the one who just read the chat
-              // (so the sender sees the update)
               if (String(m.senderId) !== String(data.userId) && !m.readAt) {
                 return { ...m, readAt: data.readAt };
               }
@@ -247,8 +475,19 @@ function App() {
           );
         }
       });
+      newSocket.on('TYPING', (data: { chatId: string; userId: string; isTyping: boolean }) => {
+        const chat = selectedChatRef.current;
+        const user = currentUserRef.current;
+        if (
+          chat &&
+          data.chatId === chat._id &&
+          String(data.userId) !== String(user?._id)
+        ) {
+          setOtherUserTyping(!!data.isTyping);
+        }
+      });
       newSocket.on('MESSAGE_DELETED', (data) => {
-        if (data.chatId === selectedChat?._id) {
+        if (data.chatId === selectedChatRef.current?._id) {
           setMessages((prev) => prev.filter((m) => m._id !== data.messageId));
         }
         showSuccess('Message removed');
@@ -341,6 +580,7 @@ function App() {
     const replyToId = replyingTo?._id;
     setMessageInput('');
     setReplyingTo(null);
+    stopTypingIndicator();
     try {
       socket.emit('MESSAGE_SEND', {
         chatId: selectedChat._id,
@@ -645,7 +885,22 @@ function App() {
             </div>
           ) : (
             <>
+              {otherUserTyping && (
+                <div className="typing-indicator">
+                  {getChatName(selectedChat)} is typing<span className="typing-dots">...</span>
+                </div>
+              )}
               <div className="messages-container" ref={messagesContainerRef}>
+                {messagesPagination?.hasMore && (
+                  <button
+                    type="button"
+                    className="fetch-older-btn"
+                    onClick={loadOlderMessages}
+                    disabled={loadingOlderMessages}
+                  >
+                    {loadingOlderMessages ? 'Loading…' : 'Fetch earlier messages'}
+                  </button>
+                )}
                 {messages.length === 0 ? (
                   <div className="loading">No messages yet. Say hello!</div>
                 ) : (
@@ -655,20 +910,40 @@ function App() {
                     const showDate = prevKey !== currKey;
                     return (
                       <div key={message._id} className="message-row">
+                        <MessageLinkPreviewHydrator message={message} patchMessage={patchMessage} />
                         {showDate && (
                           <div className="date-separator">{formatDateLabel(message.createdAt)}</div>
                         )}
-                        <div className={`message ${String(message.senderId) === String(currentUser._id) ? 'own' : 'other'}`}>
+                        <div
+                          ref={(el) => {
+                            messageRowRefs.current[String(message._id)] = el;
+                          }}
+                          id={`chat-msg-${message._id}`}
+                          className={`message ${String(message.senderId) === String(currentUser._id) ? 'own' : 'other'}${highlightMessageId === message._id ? ' message-highlight' : ''}`}
+                        >
                           <div className="message-bubble-wrapper">
                             <div className="message-bubble">
                               {message.replyTo && (
-                                <div className="message-reply-context">
+                                <button
+                                  type="button"
+                                  className="message-reply-context"
+                                  onClick={() =>
+                                    message.replyTo?._id &&
+                                    scrollToMessage(String(message.replyTo._id))
+                                  }
+                                >
                                   <span className="reply-context-name">
                                     {String(message.replyTo.senderId) === String(currentUser._id) ? 'You' : (message.replyTo.senderName || 'User')}
                                   </span>
                                   <span className="reply-context-text">{linkify(message.replyTo.content)}</span>
-                                </div>
+                                </button>
                               )}
+                              {message.linkPreview &&
+                              (message.linkPreview.imageUrl ||
+                                message.linkPreview.title ||
+                                message.linkPreview.siteName) ? (
+                                <LinkPreviewCard lp={message.linkPreview} />
+                              ) : null}
                               {linkify(message.content)}
                               {String(message.senderId) === String(currentUser._id) && message.readAt && (
                                 <div className="message-seen">Seen</div>
@@ -723,7 +998,7 @@ function App() {
                 <input
                   type="text"
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
+                  onChange={(e) => handleMessageInputChange(e.target.value)}
                   placeholder="Type a message…"
                 />
                 <button type="submit" disabled={!messageInput.trim()} aria-label="Send message">

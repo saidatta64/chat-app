@@ -68,12 +68,22 @@ export interface ChatResponse {
 }
 
 // Message Types
+export interface LinkPreviewPayload {
+  url: string;
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  siteName?: string;
+  isVideo?: boolean;
+}
+
 export interface IMessage extends Document {
   _id: Types.ObjectId;
   chatId: Types.ObjectId;
   senderId: Types.ObjectId;
   content: string;
   replyTo?: Types.ObjectId;
+  linkPreview?: LinkPreviewPayload;
   createdAt: Date;
   readAt?: Date;
 }
@@ -90,6 +100,7 @@ export interface MessageResponse {
     senderId: string;
     senderName?: string;
   };
+  linkPreview?: LinkPreviewPayload;
   createdAt: Date;
   readAt?: Date;
 }

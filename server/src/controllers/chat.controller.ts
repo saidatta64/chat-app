@@ -59,6 +59,31 @@ export class ChatController {
   }
 
   /**
+   * Get Open Graph link preview for a URL
+   * GET /api/chat/link-preview?url=
+   */
+  async getLinkPreview(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const raw = req.query.url;
+      const url = typeof raw === 'string' ? raw.trim() : '';
+      if (!url) {
+        res.status(400).json({ error: 'url query parameter is required', statusCode: 400 });
+        return;
+      }
+
+      const preview = await chatService.getLinkPreviewForUrl(url);
+      if (!preview) {
+        res.status(404).json({ error: 'Preview not available for this URL', statusCode: 404 });
+        return;
+      }
+
+      res.status(200).json({ preview });
+    } catch (error: any) {
+      next(error);
+    }
+  }
+
+  /**
    * Get message history for a chat
    * GET /api/chat/:chatId/messages
    */

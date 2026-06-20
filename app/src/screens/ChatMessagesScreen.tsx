@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,11 @@ interface ChatMessagesScreenProps {
   onReplyingToChange: (message: Message | null) => void;
   onBackPress: () => void;
   connectionStatus: string;
+  patchMessage: (messageId: string, patch: Partial<Message>) => void;
+  hasMoreMessages: boolean;
+  loadingOlderMessages: boolean;
+  onFetchOlderMessages: () => void;
+  isOtherUserTyping?: boolean;
 }
 
 const styles = StyleSheet.create({
@@ -100,6 +105,40 @@ const styles = StyleSheet.create({
     color: '#D1D7DB',
     fontSize: 11,
     fontWeight: '500',
+  },
+  fetchOlderButton: {
+    alignSelf: 'center',
+    marginVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#182229',
+    borderWidth: 1,
+    borderColor: theme.accent,
+  },
+  fetchOlderButtonDisabled: {
+    opacity: 0.55,
+  },
+  fetchOlderButtonText: {
+    color: theme.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  typingBar: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: theme.bgSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  typingText: {
+    color: theme.textSecondary,
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  typingDots: {
+    color: theme.accent,
+    fontWeight: '700',
   },
 
   // ── Reply preview ────────────────────────────────────────────────────────
@@ -206,6 +245,10 @@ interface GroupedMessage {
   items: Message[];
 }
 
+type ListRow =
+  | { kind: 'date'; id: string; dateKey: string }
+  | { kind: 'message'; id: string; message: Message };
+
 export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
   chat,
   messages,
@@ -218,21 +261,38 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
   onReplyingToChange,
   onBackPress,
   connectionStatus,
+  patchMessage,
+  hasMoreMessages,
+  loadingOlderMessages,
+  onFetchOlderMessages,
+  isOtherUserTyping,
 }) => {
-  const messagesListRef = useRef<FlatList<any> | null>(null);
+  const messagesListRef = useRef<FlatList<ListRow> | null>(null);
+  const messageRowRefs = useRef<Record<string, View | null>>({});
   const inputRef = useRef<RNTextInput | null>(null);
   const [inputFocused, setInputFocused] = React.useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(
+    null,
+  );
+  const lastMessageIdRef = useRef<string | null>(null);
+  const prependingRef = useRef(false);
+  const scrollOffsetRef = useRef(0);
+  const contentHeightRef = useRef(0);
 
-  // Scroll to bottom whenever the message list changes — covers:
-  // • initial load, • sending a message, • receiving a new message
+  // Scroll to bottom only when a new message arrives at the end (not when loading older)
   useEffect(() => {
-    if (messages.length === 0) return;
-    // Small timeout lets the FlatList finish laying out the new item
+    if (messages.length === 0) {
+      lastMessageIdRef.current = null;
+      return;
+    }
+    const lastId = messages[messages.length - 1]._id;
+    if (lastMessageIdRef.current === lastId) return;
+    lastMessageIdRef.current = lastId;
     const t = setTimeout(() => {
       messagesListRef.current?.scrollToEnd({ animated: true });
     }, 80);
     return () => clearTimeout(t);
-  }, [messages.length]);
+  }, [messages]);
 
   const groupedMessages = useMemo((): GroupedMessage[] => {
     const groups: GroupedMessage[] = [];
@@ -257,6 +317,61 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
     return groups;
   }, [messages]);
 
+  const listRows = useMemo((): ListRow[] => {
+    const rows: ListRow[] = [];
+    for (const g of groupedMessages) {
+      rows.push({ kind: 'date', id: `date-${g.id}`, dateKey: g.date });
+      for (const m of g.items) {
+        rows.push({ kind: 'message', id: m._id, message: m });
+      }
+    }
+    return rows;
+  }, [groupedMessages]);
+
+  const scrollToMessageId = useCallback(
+    (messageId: string) => {
+      const targetId = String(messageId);
+      setHighlightedMessageId(targetId);
+      setTimeout(() => setHighlightedMessageId(null), 2200);
+
+      const listRef = messagesListRef.current;
+      const rowRef = messageRowRefs.current[targetId];
+
+      const scrollByIndex = () => {
+        const idx = listRows.findIndex(
+          (r) => r.kind === 'message' && String(r.id) === targetId,
+        );
+        if (idx >= 0 && listRef) {
+          listRef.scrollToIndex({
+            index: idx,
+            animated: true,
+            viewPosition: 0.35,
+          });
+        }
+      };
+
+      if (!listRef) return;
+
+      const scrollView = listRef.getNativeScrollRef?.();
+      if (!rowRef || !scrollView) {
+        scrollByIndex();
+        return;
+      }
+
+      rowRef.measureLayout(
+        scrollView as any,
+        (_left, top) => {
+          listRef.scrollToOffset({
+            offset: Math.max(0, top - 72),
+            animated: true,
+          });
+        },
+        scrollByIndex,
+      );
+    },
+    [listRows],
+  );
+
   const getOtherParticipantName = (): string => {
     if (!currentUser) return 'Unknown';
     if (chat.otherParticipant?.username) return chat.otherParticipant.username;
@@ -267,7 +382,30 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
 
   const canSendMessage = chat.status === 'accepted';
 
+  const handleFetchOlder = () => {
+    prependingRef.current = true;
+    onFetchOlderMessages();
+  };
 
+  const listHeader = hasMoreMessages ? (
+    <TouchableOpacity
+      style={[
+        styles.fetchOlderButton,
+        loadingOlderMessages && styles.fetchOlderButtonDisabled,
+      ]}
+      onPress={handleFetchOlder}
+      disabled={loadingOlderMessages}
+      activeOpacity={0.75}
+    >
+      <Text style={styles.fetchOlderButtonText}>
+        {loadingOlderMessages ? 'Loading…' : 'Fetch earlier messages'}
+      </Text>
+    </TouchableOpacity>
+  ) : null;
+
+  const typingLabel = isOtherUserTyping
+    ? `${getOtherParticipantName()} is typing`
+    : null;
 
   return (
     /**
@@ -322,6 +460,15 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
             />
           </View>
 
+          {typingLabel ? (
+            <View style={styles.typingBar}>
+              <Text style={styles.typingText}>
+                {typingLabel}
+                <Text style={styles.typingDots}>...</Text>
+              </Text>
+            </View>
+          ) : null}
+
           {/* ── Messages list (flex: 1 — fills all remaining space) ── */}
           <ImageBackground
             source={require('../../assets/chat-wallpaper.jpg')}
@@ -338,31 +485,77 @@ export const ChatMessagesScreen: React.FC<ChatMessagesScreenProps> = ({
               alwaysBounceVertical={false}
               keyboardShouldPersistTaps="handled"
               contentInsetAdjustmentBehavior="never"
-              data={groupedMessages}
-              keyExtractor={(g) => g.id}
-              renderItem={({ item: group }) => (
-                <View>
-                  <View style={styles.dateSeparator}>
-                    <Text style={styles.dateSeparatorText}>
-                      {formatDateLabel(group.date)}
-                    </Text>
+              data={listRows}
+              extraData={highlightedMessageId}
+              keyExtractor={(row) => row.id}
+              ListHeaderComponent={listHeader}
+              onScroll={(e) => {
+                scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+              }}
+              onContentSizeChange={(_w, h) => {
+                if (
+                  prependingRef.current &&
+                  contentHeightRef.current > 0 &&
+                  h > contentHeightRef.current
+                ) {
+                  const delta = h - contentHeightRef.current;
+                  messagesListRef.current?.scrollToOffset({
+                    offset: scrollOffsetRef.current + delta,
+                    animated: false,
+                  });
+                  prependingRef.current = false;
+                }
+                contentHeightRef.current = h;
+              }}
+              initialNumToRender={Math.min(listRows.length, 100)}
+              maxToRenderPerBatch={Math.min(listRows.length, 50)}
+              windowSize={15}
+              onScrollToIndexFailed={(info) => {
+                messagesListRef.current?.scrollToOffset({
+                  offset: info.averageItemLength * info.index,
+                  animated: false,
+                });
+                setTimeout(() => {
+                  messagesListRef.current?.scrollToIndex({
+                    index: info.index,
+                    animated: true,
+                    viewPosition: 0.35,
+                  });
+                }, 150);
+              }}
+              renderItem={({ item: row }) => {
+                if (row.kind === 'date') {
+                  return (
+                    <View style={styles.dateSeparator}>
+                      <Text style={styles.dateSeparatorText}>
+                        {formatDateLabel(row.dateKey)}
+                      </Text>
+                    </View>
+                  );
+                }
+                const message = row.message;
+                const isOwn =
+                  String(message.senderId) === String(currentUser?._id);
+                return (
+                  <View
+                    ref={(node) => {
+                      messageRowRefs.current[String(message._id)] = node;
+                    }}
+                    collapsable={false}
+                  >
+                    <ChatBubble
+                      message={message}
+                      isOwn={isOwn}
+                      currentUserId={currentUser?._id ?? ''}
+                      onReply={onReplyingToChange}
+                      onDelete={onDeleteMessage}
+                      onReplyNavigate={scrollToMessageId}
+                      onPatchMessage={patchMessage}
+                      isHighlighted={highlightedMessageId === String(message._id)}
+                    />
                   </View>
-                  {group.items.map((message: Message) => {
-                    const isOwn =
-                      String(message.senderId) === String(currentUser?._id);
-                    return (
-                      <ChatBubble
-                        key={message._id}
-                        message={message}
-                        isOwn={isOwn}
-                        currentUserId={currentUser?._id ?? ''}
-                        onReply={onReplyingToChange}
-                        onDelete={onDeleteMessage}
-                      />
-                    );
-                  })}
-                </View>
-              )}
+                );
+              }}
             />
           </ImageBackground>
 

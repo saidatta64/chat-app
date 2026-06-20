@@ -23,6 +23,15 @@ export interface ReplyTo {
   senderName?: string;
 }
 
+export interface LinkPreview {
+  url: string;
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  siteName?: string;
+  isVideo?: boolean;
+}
+
 export interface Message {
   _id: string;
   chatId: string;
@@ -30,6 +39,7 @@ export interface Message {
   senderName?: string;
   content: string;
   replyTo?: ReplyTo;
+  linkPreview?: LinkPreview;
   createdAt: string;
   readAt?: string; // set when the other participant reads the message
 }

@@ -3,16 +3,25 @@ import { io, Socket } from 'socket.io-client';
 import { API_URL } from '../constants';
 import { ConnectionStatus } from '../types';
 
+interface TypingEvent {
+  chatId: string;
+  userId: string;
+  isTyping: boolean;
+  username?: string;
+}
+
 interface UseSocketReturn {
   socket: Socket | null;
   connectionStatus: ConnectionStatus;
   emitMessageRead: (chatId: string, userId: string) => void;
+  emitTyping: (chatId: string, userId: string, isTyping: boolean) => void;
 }
 
 interface SocketEventHandlers {
   onMessageReceived?: (data: any) => void;
   onMessageDeleted?: (data: any) => void;
   onMessageRead?: (data: { chatId: string; userId: string; readAt: string }) => void;
+  onTyping?: (data: TypingEvent) => void;
   onChatRequest?: () => void;
   onChatAccepted?: (data: any) => void;
   onError?: (data: any) => void;
@@ -75,10 +84,12 @@ export function useSocket(
       handlersRef.current.onMessageDeleted?.(data);
     });
 
-    // When the other participant opens/reads the chat, SERVER fires MESSAGE_READ
-    // { chatId, userId, readAt } — we update readAt on messages we sent
     s.on('MESSAGE_READ', (data: any) => {
       handlersRef.current.onMessageRead?.(data);
+    });
+
+    s.on('TYPING', (data: TypingEvent) => {
+      handlersRef.current.onTyping?.(data);
     });
 
     s.on('CHAT_REQUEST', () => {
@@ -102,10 +113,16 @@ export function useSocket(
     };
   }, [userId]);
 
-  // Stable helper — emits MESSAGE_READ without stale closure issues
   const emitMessageRead = useCallback((chatId: string, userId: string) => {
     socketRef.current?.emit('MESSAGE_READ', { chatId, userId });
   }, []);
 
-  return { socket, connectionStatus, emitMessageRead };
+  const emitTyping = useCallback(
+    (chatId: string, userId: string, isTyping: boolean) => {
+      socketRef.current?.emit('TYPING', { chatId, userId, isTyping });
+    },
+    [],
+  );
+
+  return { socket, connectionStatus, emitMessageRead, emitTyping };
 }

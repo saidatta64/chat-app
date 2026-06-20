@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import axios from 'axios';
@@ -32,20 +32,27 @@ const App: React.FC = () => {
     loading: chatLoading,
     loadChats,
     loadMessages,
+    loadOlderMessages,
+    messagesPagination,
+    loadingOlderMessages,
     acceptChat,
     createChatRequest,
     addMessageToChat,
     removeMessageFromChat,
     updateMessageReadAt,
+    patchMessage,
   } = useChat();
   const { expoPushToken, isLoading: pushTokenLoading, permissionStatus } = usePushNotifications();
   const { error, success, showError, showSuccess } = useToast();
   const [selectedChat, setSelectedChat] = React.useState<Chat | null>(null);
   const [messageInput, setMessageInput] = React.useState('');
   const [replyingTo, setReplyingTo] = React.useState<any>(null);
+  const [otherUserTyping, setOtherUserTyping] = React.useState(false);
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingActiveRef = useRef(false);
 
   // Socket event handlers
-  const { socket, connectionStatus, emitMessageRead } = useSocket(currentUser?._id ?? null, {
+  const { socket, connectionStatus, emitMessageRead, emitTyping } = useSocket(currentUser?._id ?? null, {
     onMessageReceived: (data) => {
       if (data.chatId === selectedChat?._id) {
         addMessageToChat(data.message);
@@ -66,6 +73,14 @@ const App: React.FC = () => {
       // data = { chatId, userId (the reader), readAt }
       if (data.chatId === selectedChat?._id) {
         updateMessageReadAt(data.chatId, data.userId, data.readAt);
+      }
+    },
+    onTyping: (data) => {
+      if (
+        data.chatId === selectedChat?._id &&
+        String(data.userId) !== String(currentUser?._id)
+      ) {
+        setOtherUserTyping(!!data.isTyping);
       }
     },
     onChatRequest: () => {
@@ -95,10 +110,49 @@ const App: React.FC = () => {
   useEffect(() => {
     if (selectedChat && currentUser) {
       loadMessages(selectedChat._id);
-      // Tell the server we've read this chat as soon as we open it
+      setOtherUserTyping(false);
       emitMessageRead(selectedChat._id, currentUser._id);
     }
   }, [selectedChat?._id]);
+
+  const stopTypingIndicator = () => {
+    if (!selectedChat || !currentUser) return;
+    if (typingStopTimerRef.current) {
+      clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = null;
+    }
+    if (isTypingActiveRef.current) {
+      emitTyping(selectedChat._id, currentUser._id, false);
+      isTypingActiveRef.current = false;
+    }
+  };
+
+  const handleMessageInputChange = (text: string) => {
+    setMessageInput(text);
+    if (!selectedChat || !currentUser || !socket) return;
+
+    if (text.trim()) {
+      if (!isTypingActiveRef.current) {
+        emitTyping(selectedChat._id, currentUser._id, true);
+        isTypingActiveRef.current = true;
+      }
+      if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = setTimeout(() => {
+        stopTypingIndicator();
+      }, 2000);
+    } else {
+      stopTypingIndicator();
+    }
+  };
+
+  const handleFetchOlderMessages = async () => {
+    if (!selectedChat) return;
+    try {
+      await loadOlderMessages(selectedChat._id);
+    } catch (err: any) {
+      showError(err.message ?? 'Failed to load older messages');
+    }
+  };
 
   // Health check and push token registration
   useEffect(() => {
@@ -163,6 +217,7 @@ const App: React.FC = () => {
     setSelectedChat(null);
     setMessageInput('');
     setReplyingTo(null);
+    stopTypingIndicator();
   };
 
   // Handle send message
@@ -180,6 +235,7 @@ const App: React.FC = () => {
 
     setMessageInput('');
     setReplyingTo(null);
+    stopTypingIndicator();
 
     try {
       socket.emit('MESSAGE_SEND', {
@@ -263,13 +319,18 @@ const App: React.FC = () => {
           messages={messages}
           currentUser={currentUser}
           messageInput={messageInput}
-          onMessageInputChange={setMessageInput}
+          onMessageInputChange={handleMessageInputChange}
           onSendMessage={handleSendMessage}
           onDeleteMessage={handleDeleteMessage}
           replyingTo={replyingTo}
           onReplyingToChange={setReplyingTo}
           onBackPress={() => setSelectedChat(null)}
           connectionStatus={connectionStatus}
+          patchMessage={patchMessage}
+          hasMoreMessages={!!messagesPagination?.hasMore}
+          loadingOlderMessages={loadingOlderMessages}
+          onFetchOlderMessages={handleFetchOlderMessages}
+          isOtherUserTyping={otherUserTyping}
         />
         {error && <Toast message={error} type="error" />}
         {success && <Toast message={success} type="success" />}

@@ -10,6 +10,13 @@ import {
   PaginatedResponse,
 } from '../types';
 import userService from './user.service';
+import {
+  extractFirstHttpUrl,
+  fetchLinkPreview,
+  isUrlSafeForFetch,
+  LinkPreviewData,
+} from './linkPreview.service';
+import { LinkPreviewPayload } from '../types';
 
 export class ChatService {
   /**
@@ -225,7 +232,7 @@ export class ChatService {
       .populate('senderId', 'username')
       .populate({
         path: 'replyTo',
-        select: 'content senderId',
+        select: '_id content senderId',
         populate: { path: 'senderId', select: 'username' }
       })
       .sort({ createdAt: -1 })
@@ -265,12 +272,20 @@ export class ChatService {
       throw new Error('Cannot send messages to a chat that is not accepted');
     }
 
+    const trimmedContent = content.trim();
+    let linkPreview: LinkPreviewData | undefined;
+    const firstUrl = extractFirstHttpUrl(trimmedContent);
+    if (firstUrl && isUrlSafeForFetch(firstUrl)) {
+      linkPreview = (await fetchLinkPreview(firstUrl)) ?? undefined;
+    }
+
     // Create message
     const message = new Message({
       chatId: new Types.ObjectId(chatId),
       senderId: new Types.ObjectId(senderId),
-      content: content.trim(),
+      content: trimmedContent,
       replyTo: replyToId ? new Types.ObjectId(replyToId) : undefined,
+      ...(linkPreview ? { linkPreview } : {}),
     });
 
     const savedMessage = await message.save();
@@ -280,17 +295,37 @@ export class ChatService {
       lastMessageAt: new Date(),
       lastMessage: savedMessage._id,
     });
-    
-    // If it's a reply, we need to populate it for the response
+
+    await savedMessage.populate('senderId', 'username');
     if (replyToId) {
       await savedMessage.populate({
         path: 'replyTo',
-        select: 'content senderId',
-        populate: { path: 'senderId', select: 'username' }
+        select: '_id content senderId',
+        populate: { path: 'senderId', select: 'username' },
       });
     }
-    
+
     return this.toMessageResponse(savedMessage);
+  }
+
+   /**
+   * Resolve Open Graph metadata for a URL (lazy preview for older messages / clients).
+   */
+  async getLinkPreviewForUrl(url: string): Promise<LinkPreviewPayload | null> {
+    const trimmed = (url || '').trim();
+    if (!trimmed || !isUrlSafeForFetch(trimmed)) {
+      return null;
+    }
+    const data: LinkPreviewData | null = await fetchLinkPreview(trimmed);
+    if (!data?.url) return null;
+    return {
+      url: data.url,
+      title: data.title,
+      description: data.description,
+      imageUrl: data.imageUrl,
+      siteName: data.siteName,
+      isVideo: !!data.isVideo,
+    };
   }
 
   /**
@@ -364,17 +399,42 @@ export class ChatService {
         ? message.senderId._id.toString()
         : String(message.senderId ?? '');
 
-    // Handle replyTo populated data
+    // Handle replyTo populated data (or raw ObjectId ref)
     let replyToResponse;
-    if (message.replyTo && typeof message.replyTo === 'object') {
-      const rSender = message.replyTo.senderId;
-      replyToResponse = {
-        _id: message.replyTo._id.toString(),
-        content: message.replyTo.content,
-        senderId: rSender?._id?.toString?.() ?? String(rSender ?? ''),
-        senderName: rSender && typeof rSender === 'object' ? rSender.username : undefined,
-      };
+    if (message.replyTo) {
+      if (typeof message.replyTo === 'object' && message.replyTo.content != null) {
+        const rSender = message.replyTo.senderId;
+        const replyId =
+          message.replyTo._id != null
+            ? String(message.replyTo._id)
+            : String(message.replyTo);
+        replyToResponse = {
+          _id: replyId,
+          content: message.replyTo.content,
+          senderId: rSender?._id?.toString?.() ?? String(rSender ?? ''),
+          senderName: rSender && typeof rSender === 'object' ? rSender.username : undefined,
+        };
+      } else {
+        replyToResponse = {
+          _id: String(message.replyTo),
+          content: '',
+          senderId: '',
+        };
+      }
     }
+
+    const lp = message.linkPreview;
+    const linkPreviewResponse =
+      lp && lp.url
+        ? {
+            url: lp.url,
+            title: lp.title,
+            description: lp.description,
+            imageUrl: lp.imageUrl,
+            siteName: lp.siteName,
+            isVideo: !!lp.isVideo,
+          }
+        : undefined;
 
     return {
       _id: message._id.toString(),
@@ -383,6 +443,7 @@ export class ChatService {
       senderName: message.senderId && typeof message.senderId === 'object' ? message.senderId.username : undefined,
       content: message.content,
       replyTo: replyToResponse,
+      linkPreview: linkPreviewResponse,
       createdAt: message.createdAt,
       readAt: message.readAt,
     };

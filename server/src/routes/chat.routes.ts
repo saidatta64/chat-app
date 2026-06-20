@@ -3,6 +3,8 @@ import chatController from '../controllers/chat.controller';
 
 const router = Router();
 
+router.get('/link-preview', chatController.getLinkPreview.bind(chatController));
+
 router.post('/request', chatController.createChatRequest.bind(chatController));
 router.post('/:chatId/accept', chatController.acceptChat.bind(chatController));
 router.get('/user/:userId', chatController.getUserChats.bind(chatController));

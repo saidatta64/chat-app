@@ -3,12 +3,24 @@ import axios from 'axios';
 import { API_URL } from '../constants';
 import { Chat, Message, User } from '../types';
 
+export const MESSAGES_PAGE_SIZE = 50;
+
+export interface MessagesPagination {
+  page: number;
+  totalPages: number;
+  total: number;
+  hasMore: boolean;
+}
+
 interface UseChatReturn {
   chats: Chat[];
   messages: Message[];
   loading: boolean;
+  messagesPagination: MessagesPagination | null;
+  loadingOlderMessages: boolean;
   loadChats: (userId: string) => Promise<void>;
   loadMessages: (chatId: string) => Promise<void>;
+  loadOlderMessages: (chatId: string) => Promise<void>;
   acceptChat: (chatId: string, userId: string) => Promise<void>;
   createChatRequest: (
     fromUserId: string,
@@ -17,6 +29,7 @@ interface UseChatReturn {
   addMessageToChat: (message: Message) => void;
   removeMessageFromChat: (messageId: string) => void;
   updateMessageReadAt: (chatId: string, readerUserId: string, readAt: string) => void;
+  patchMessage: (messageId: string, patch: Partial<Message>) => void;
   setMessages: (messages: Message[]) => void;
   setChats: (chats: Chat[]) => void;
 }
@@ -25,6 +38,9 @@ export function useChat(): UseChatReturn {
   const [chats, setChats] = useState<Chat[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [messagesPagination, setMessagesPagination] =
+    useState<MessagesPagination | null>(null);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
 
   const loadChats = useCallback(async (userId: string) => {
     try {
@@ -48,14 +64,64 @@ export function useChat(): UseChatReturn {
     try {
       const res = await axios.get<{
         data: Message[];
-      }>(`${API_URL}/api/chat/${chatId}/messages?limit=100`);
+        page: number;
+        totalPages: number;
+        total: number;
+      }>(
+        `${API_URL}/api/chat/${chatId}/messages?page=1&limit=${MESSAGES_PAGE_SIZE}`,
+      );
       setMessages(res.data.data ?? []);
+      setMessagesPagination({
+        page: res.data.page,
+        totalPages: res.data.totalPages,
+        total: res.data.total,
+        hasMore: res.data.page < res.data.totalPages,
+      });
     } catch (err: any) {
       throw new Error(
         err?.response?.data?.error ?? 'Failed to load messages'
       );
     }
   }, []);
+
+  const loadOlderMessages = useCallback(
+    async (chatId: string) => {
+      if (!messagesPagination?.hasMore || loadingOlderMessages) return;
+
+      setLoadingOlderMessages(true);
+      try {
+        const nextPage = messagesPagination.page + 1;
+        const res = await axios.get<{
+          data: Message[];
+          page: number;
+          totalPages: number;
+          total: number;
+        }>(
+          `${API_URL}/api/chat/${chatId}/messages?page=${nextPage}&limit=${MESSAGES_PAGE_SIZE}`,
+        );
+
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m._id));
+          const older = (res.data.data ?? []).filter((m) => !ids.has(m._id));
+          return [...older, ...prev];
+        });
+
+        setMessagesPagination({
+          page: res.data.page,
+          totalPages: res.data.totalPages,
+          total: res.data.total,
+          hasMore: res.data.page < res.data.totalPages,
+        });
+      } catch (err: any) {
+        throw new Error(
+          err?.response?.data?.error ?? 'Failed to load older messages'
+        );
+      } finally {
+        setLoadingOlderMessages(false);
+      }
+    },
+    [messagesPagination, loadingOlderMessages],
+  );
 
   const acceptChat = useCallback(
     async (chatId: string, userId: string) => {
@@ -108,15 +174,10 @@ export function useChat(): UseChatReturn {
     setMessages((prev) => prev.filter((m) => m._id !== messageId));
   }, []);
 
-  // Stamp readAt on messages that WE sent but haven't been marked read yet.
-  // Called when the server fires MESSAGE_READ for the active chat.
-  // readerUserId = the person who just read the messages (NOT us).
   const updateMessageReadAt = useCallback(
     (chatId: string, readerUserId: string, readAt: string) => {
       setMessages((prev) =>
         prev.map((m) => {
-          // Only update messages in this chat, sent by someone OTHER than
-          // the reader (i.e. messages the reader just saw are ones we sent).
           if (m.chatId === chatId && String(m.senderId) !== String(readerUserId) && !m.readAt) {
             return { ...m, readAt };
           }
@@ -127,17 +188,27 @@ export function useChat(): UseChatReturn {
     []
   );
 
+  const patchMessage = useCallback((messageId: string, patch: Partial<Message>) => {
+    setMessages((prev) =>
+      prev.map((m) => (m._id === messageId ? { ...m, ...patch } : m)),
+    );
+  }, []);
+
   return {
     chats,
     messages,
     loading,
+    messagesPagination,
+    loadingOlderMessages,
     loadChats,
     loadMessages,
+    loadOlderMessages,
     acceptChat,
     createChatRequest,
     addMessageToChat,
     removeMessageFromChat,
     updateMessageReadAt,
+    patchMessage,
     setMessages,
     setChats,
   };

@@ -4,24 +4,28 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import mongoose from 'mongoose';
 import { connectDB } from './config/db';
+import {
+  connectRedis,
+  disconnectRedis,
+  isRedisConfigured,
+  isRedisReady,
+} from './config/redis';
 import routes from './routes';
 import { SocketHandler } from './websocket/socket.handler';
 import chatService from './services/chat.service';
 import messageHandler from './websocket/message.handler';
 
-// Load environment variables
 dotenv.config();
 
 const app: Application = express();
 const httpServer = createServer(app);
 const PORT = Number(process.env.PORT) || 3000;
 
-// Middleware
+let socketHandler: SocketHandler;
+
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     const allowedOrigin = process.env.FRONTEND_URL || process.env.CLIENT_URL;
-    // Allow any origin if FRONTEND_URL is not set (for development)
-    // or if the request is from the allowed origin
     if (!allowedOrigin || origin === allowedOrigin || !origin) {
       callback(null, true);
     } else {
@@ -37,24 +41,24 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
-  res.status(200).json({ status: 'OK', message: 'Server is running' });
+  res.status(200).json({
+    status: 'OK',
+    message: 'Server is running',
+    redis: {
+      configured: isRedisConfigured(),
+      connected: isRedisReady(),
+    },
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  });
 });
 
-// API Routes
 app.use('/api', routes);
 
-// Initialize Socket.io
-const socketHandler = new SocketHandler(httpServer);
-
-// Integrate Socket.io with chat service events
-// When a chat request is created, notify the recipient via WebSocket
 const originalCreateChatRequest = chatService.createChatRequest.bind(chatService);
 chatService.createChatRequest = async (data) => {
   const chat = await originalCreateChatRequest(data);
-  
-  // Notify recipient via WebSocket if they're online
+
   if (chat.status === 'pending') {
     const chatResponse = {
       _id: chat._id,
@@ -64,22 +68,16 @@ chatService.createChatRequest = async (data) => {
       createdAt: chat.createdAt,
       acceptedAt: chat.acceptedAt,
     };
-    messageHandler.notifyChatRequest(
-      socketHandler.getIO(),
-      chatResponse,
-      socketHandler.getOnlineUsers()
-    );
+    await messageHandler.notifyChatRequest(socketHandler.getIO(), chatResponse);
   }
-  
+
   return chat;
 };
 
-// When a chat is accepted, notify both participants
 const originalAcceptChat = chatService.acceptChat.bind(chatService);
 chatService.acceptChat = async (chatId: string, userId: string) => {
   const chat = await originalAcceptChat(chatId, userId);
-  
-  // Notify both participants via WebSocket
+
   const chatResponse = {
     _id: chat._id,
     participants: chat.participants,
@@ -88,38 +86,31 @@ chatService.acceptChat = async (chatId: string, userId: string) => {
     createdAt: chat.createdAt,
     acceptedAt: chat.acceptedAt,
   };
-  messageHandler.notifyChatAccepted(
-    socketHandler.getIO(),
-    chatResponse,
-    socketHandler.getOnlineUsers()
-  );
-  
+  await messageHandler.notifyChatAccepted(socketHandler.getIO(), chatResponse);
+
   return chat;
 };
 
-// Error handling middleware (must be after routes)
 app.use((err: any, _req: Request, res: Response, _next: any) => {
   const statusCode = err.statusCode || 500;
   let message = err.message || 'Internal server error';
-  
-  // Sanitize error message for production
+
   if (process.env.NODE_ENV === 'production' && statusCode === 500) {
     message = 'An unexpected error occurred. Please try again later.';
   }
 
   console.error(`[${new Date().toISOString()}] Error ${statusCode}:`, err);
-  
+
   res.status(statusCode).json({
     error: message,
     statusCode,
-    ...(process.env.NODE_ENV === 'development' && { 
+    ...(process.env.NODE_ENV === 'development' && {
       stack: err.stack,
-      details: err.details || undefined
+      details: err.details || undefined,
     }),
   });
 });
 
-// 404 handler
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
     error: 'Route not found',
@@ -127,45 +118,40 @@ app.use((_req: Request, res: Response) => {
   });
 });
 
-// Start server
+const shutdown = async (signal: string) => {
+  console.log(`${signal} signal received: closing HTTP server`);
+  httpServer.close(async () => {
+    console.log('HTTP server closed');
+    await disconnectRedis();
+    await mongoose.connection.close(false);
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 const startServer = async (): Promise<void> => {
   try {
-    // Connect to MongoDB
     await connectDB();
-    
-    // Start HTTP server
+    await connectRedis();
+
+    socketHandler = new SocketHandler(httpServer);
+    socketHandler.attachRedisAdapter();
+
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`Server is running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`Frontend URL: ${process.env.FRONTEND_URL || process.env.CLIENT_URL || 'Not set'}`);
+      console.log(
+        `Redis: ${isRedisReady() ? 'connected' : isRedisConfigured() ? 'configured but unavailable' : 'not configured (in-memory fallback)'}`,
+      );
     });
   } catch (error: any) {
     console.error('Failed to start server:', error);
     process.exit(1);
   }
 };
-
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  httpServer.close(() => {
-    console.log('HTTP server closed');
-    mongoose.connection.close(false).then(() => {
-      console.log('MongoDB connection closed');
-      process.exit(0);
-    });
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT signal received: closing HTTP server');
-  httpServer.close(() => {
-    console.log('HTTP server closed');
-    mongoose.connection.close(false).then(() => {
-      console.log('MongoDB connection closed');
-      process.exit(0);
-    });
-  });
-});
 
 startServer();

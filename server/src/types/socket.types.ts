@@ -5,6 +5,7 @@ export interface ClientToServerEvents {
   MESSAGE_SEND: (data: MessageSendData) => void;
   MESSAGE_DELETE: (data: MessageDeleteData) => void;
   MESSAGE_READ: (data: MessageReadData) => void;
+  TYPING: (data: TypingData) => void;
   USER_CONNECT: (data: UserConnectData) => void;
   USER_DISCONNECT: () => void;
 }
@@ -14,6 +15,7 @@ export interface ServerToClientEvents {
   MESSAGE_RECEIVED: (data: MessageReceivedData) => void;
   MESSAGE_DELETED: (data: MessageDeletedData) => void;
   MESSAGE_READ: (data: MessageReadData) => void;
+  TYPING: (data: TypingData) => void;
   CHAT_REQUEST: (data: ChatRequestData) => void;
   CHAT_ACCEPTED: (data: ChatAcceptedData) => void;
   ERROR: (data: SocketErrorData) => void;
@@ -42,6 +44,13 @@ export interface MessageReadData {
   chatId: string;
   userId: string;
   readAt: Date;
+}
+
+export interface TypingData {
+  chatId: string;
+  userId: string;
+  isTyping: boolean;
+  username?: string;
 }
 
 export interface UserConnectData {

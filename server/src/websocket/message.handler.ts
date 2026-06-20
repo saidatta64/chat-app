@@ -3,10 +3,13 @@ import {
   ClientToServerEvents,
   ServerToClientEvents,
   MessageSendData,
+  TypingData,
 } from '../types/socket.types';
 import chatService from '../services/chat.service';
 import { ChatResponse } from '../types';
 import notificationService from '../services/notification.service';
+import userService from '../services/user.service';
+import onlineUsersService from '../services/onlineUsers.service';
 
 export class MessageHandler {
   /**
@@ -16,11 +19,9 @@ export class MessageHandler {
     io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
     socket: Socket<ClientToServerEvents, ServerToClientEvents>,
     data: MessageSendData,
-    onlineUsers: Map<string, string>
   ): Promise<void> {
     const { chatId, content, senderId, replyToId } = data;
 
-    // Validate input
     if (!chatId || !content || !senderId) {
       socket.emit('ERROR', {
         error: 'Missing required fields',
@@ -29,11 +30,9 @@ export class MessageHandler {
       return;
     }
 
-    // Validate chat and user participation
     try {
       const chat = await chatService.validateChatParticipants(chatId, senderId);
 
-      // Verify chat is accepted
       if (chat.status !== 'accepted') {
         socket.emit('ERROR', {
           error: 'Chat not accepted',
@@ -42,24 +41,18 @@ export class MessageHandler {
         return;
       }
 
-      // Create message
       const message = await chatService.createMessage(chatId, senderId, content, replyToId);
-
-      // Get chat participants
       const participants = chat.participants.map((p) => p.toString());
 
-      // Emit to all online participants via websockets
-      participants.forEach((userId) => {
-        const socketId = onlineUsers.get(userId);
-        if (socketId) {
-          io.to(socketId).emit('MESSAGE_RECEIVED', {
-            message,
-            chatId,
-          });
-        }
-      });
+      await Promise.all(
+        participants.map(async (userId) => {
+          const socketId = await onlineUsersService.getSocketId(userId);
+          if (socketId) {
+            io.to(socketId).emit('MESSAGE_RECEIVED', { message, chatId });
+          }
+        }),
+      );
 
-      // Send push notifications to offline participants (or all except sender)
       const recipients = participants.filter((id) => id !== senderId);
       if (recipients.length > 0) {
         const senderName = message.senderName || 'New message';
@@ -88,7 +81,6 @@ export class MessageHandler {
     io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
     socket: Socket<ClientToServerEvents, ServerToClientEvents>,
     data: { messageId: string; userId: string },
-    onlineUsers: Map<string, string>
   ): Promise<void> {
     const { messageId, userId } = data;
 
@@ -104,19 +96,17 @@ export class MessageHandler {
       const { success, chatId } = await chatService.deleteMessage(messageId, userId);
 
       if (success) {
-        // Get chat participants to notify them
         const chat = await chatService.getChatById(chatId);
         if (chat) {
           const participants = chat.participants.map((p) => p.toString());
-          participants.forEach((pId) => {
-            const socketId = onlineUsers.get(pId);
-            if (socketId) {
-              io.to(socketId).emit('MESSAGE_DELETED', {
-                messageId,
-                chatId,
-              });
-            }
-          });
+          await Promise.all(
+            participants.map(async (pId) => {
+              const socketId = await onlineUsersService.getSocketId(pId);
+              if (socketId) {
+                io.to(socketId).emit('MESSAGE_DELETED', { messageId, chatId });
+              }
+            }),
+          );
         }
         console.log(`Message ${messageId} deleted by user ${userId}`);
       }
@@ -135,7 +125,6 @@ export class MessageHandler {
     io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
     socket: Socket<ClientToServerEvents, ServerToClientEvents>,
     data: { chatId: string; userId: string },
-    onlineUsers: Map<string, string>
   ): Promise<void> {
     const { chatId, userId } = data;
 
@@ -148,23 +137,23 @@ export class MessageHandler {
     }
 
     try {
-      // Mark all messages in the chat as read for this user
       await chatService.markMessagesAsRead(chatId, userId);
 
-      // Get chat participants to notify them
       const chat = await chatService.getChatById(chatId);
       if (chat) {
         const participants = chat.participants.map((p) => p.toString());
-        participants.forEach((pId) => {
-          const socketId = onlineUsers.get(pId);
-          if (socketId) {
-            io.to(socketId).emit('MESSAGE_READ', {
-              chatId,
-              userId,
-              readAt: new Date(),
-            });
-          }
-        });
+        await Promise.all(
+          participants.map(async (pId) => {
+            const socketId = await onlineUsersService.getSocketId(pId);
+            if (socketId) {
+              io.to(socketId).emit('MESSAGE_READ', {
+                chatId,
+                userId,
+                readAt: new Date(),
+              });
+            }
+          }),
+        );
       }
       console.log(`Messages in chat ${chatId} marked as read by user ${userId}`);
     } catch (error: any) {
@@ -176,20 +165,59 @@ export class MessageHandler {
   }
 
   /**
+   * Handle TYPING event — notify the other participant
+   */
+  async handleTyping(
+    io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
+    _socket: Socket<ClientToServerEvents, ServerToClientEvents>,
+    data: TypingData,
+  ): Promise<void> {
+    const { chatId, userId, isTyping } = data;
+
+    if (!chatId || !userId) {
+      return;
+    }
+
+    try {
+      const chat = await chatService.validateChatParticipants(chatId, userId);
+      if (chat.status !== 'accepted') {
+        return;
+      }
+
+      const sender = await userService.getUserById(userId);
+      const payload: TypingData = {
+        chatId,
+        userId,
+        isTyping: !!isTyping,
+        username: sender?.username,
+      };
+
+      const participants = chat.participants.map((p) => p.toString());
+      await Promise.all(
+        participants.map(async (participantId) => {
+          if (participantId === userId) return;
+          const socketId = await onlineUsersService.getSocketId(participantId);
+          if (socketId) {
+            io.to(socketId).emit('TYPING', payload);
+          }
+        }),
+      );
+    } catch {
+      // Ignore typing errors silently
+    }
+  }
+
+  /**
    * Notify users of new chat request
    */
-  notifyChatRequest(
+  async notifyChatRequest(
     io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
     chat: ChatResponse,
-    onlineUsers: Map<string, string>
-  ): void {
-    // Notify the recipient (not the initiator)
-    const recipientId = chat.participants.find(
-      (p) => p !== chat.initiatedBy
-    );
-    
+  ): Promise<void> {
+    const recipientId = chat.participants.find((p) => p !== chat.initiatedBy);
+
     if (recipientId) {
-      const socketId = onlineUsers.get(recipientId);
+      const socketId = await onlineUsersService.getSocketId(recipientId);
       if (socketId) {
         io.to(socketId).emit('CHAT_REQUEST', { chat });
       }
@@ -199,18 +227,18 @@ export class MessageHandler {
   /**
    * Notify users of accepted chat
    */
-  notifyChatAccepted(
+  async notifyChatAccepted(
     io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>,
     chat: ChatResponse,
-    onlineUsers: Map<string, string>
-  ): void {
-    // Notify both participants
-    chat.participants.forEach((userId) => {
-      const socketId = onlineUsers.get(userId);
-      if (socketId) {
-        io.to(socketId).emit('CHAT_ACCEPTED', { chat });
-      }
-    });
+  ): Promise<void> {
+    await Promise.all(
+      chat.participants.map(async (userId) => {
+        const socketId = await onlineUsersService.getSocketId(userId);
+        if (socketId) {
+          io.to(socketId).emit('CHAT_ACCEPTED', { chat });
+        }
+      }),
+    );
   }
 }
 
