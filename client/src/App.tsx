@@ -2,173 +2,23 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
 
-const API_URL = (
-  ((import.meta as any).env?.VITE_API_URL as string | undefined)?.trim() ||
-  'https://chat-app-1-a804.onrender.com'
-).replace(/\/+$/, '');
+import { User, Chat, Message, MessagesPagination } from './types';
+import { API_URL, MESSAGES_PAGE_SIZE } from './constants';
+import {
+  formatTime,
+  getDateKey,
+  formatDateLabel,
+  linkify
+} from './utils/formatting';
+import { useVisualViewport } from './hooks/useVisualViewport';
+import { useIsMobile } from './hooks/useIsMobile';
+import { LoginScreen } from './components/LoginScreen';
+import { NewChatModal } from './components/NewChatModal';
+import { ConfirmModal } from './components/ConfirmModal';
+import { MessageLinkPreviewHydrator } from './components/MessageLinkPreviewHydrator';
+import { LinkPreviewCard } from './components/LinkPreviewCard';
 
-const MESSAGES_PAGE_SIZE = 50;
-
-console.log('🔗 Frontend API URL:', API_URL);
-
-interface User {
-  _id: string;
-  username: string;
-  email?: string;
-}
-
-interface Chat {
-  _id: string;
-  participants: string[];
-  status: 'pending' | 'accepted' | 'rejected';
-  initiatedBy: string;
-  createdAt: string;
-  acceptedAt?: string;
-  otherParticipant?: { _id: string; username: string };
-}
-
-interface LinkPreview {
-  url: string;
-  title?: string;
-  description?: string;
-  imageUrl?: string;
-  siteName?: string;
-  isVideo?: boolean;
-}
-
-interface Message {
-  _id: string;
-  chatId: string;
-  senderId: string;
-  senderName?: string;
-  content: string;
-  replyTo?: {
-    _id: string;
-    content: string;
-    senderId: string;
-    senderName?: string;
-  };
-  linkPreview?: LinkPreview;
-  createdAt: string;
-  readAt?: string;
-}
-
-interface MessagesPagination {
-  page: number;
-  totalPages: number;
-  total: number;
-  hasMore: boolean;
-}
-
-function extractFirstHttpUrl(text: string | null | undefined): string | null {
-  if (text == null) return null;
-  const m = String(text).match(/(https?:\/\/[^\s<>"]+)/i);
-  return m ? m[1] : null;
-}
-
-function hostnameOnly(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
-
-function MessageLinkPreviewHydrator({
-  message,
-  patchMessage,
-}: {
-  message: Message;
-  patchMessage: (id: string, patch: Partial<Message>) => void;
-}) {
-  const attemptKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (message.linkPreview) return;
-    const url = extractFirstHttpUrl(message.content);
-    if (!url) return;
-    const key = `${message._id}:${url}`;
-    if (attemptKey.current === key) return;
-    attemptKey.current = key;
-    let cancelled = false;
-    axios
-      .get<{ preview: LinkPreview }>(`${API_URL}/api/chat/link-preview`, { params: { url } })
-      .then((res) => {
-        if (!cancelled && res.data.preview) {
-          patchMessage(message._id, { linkPreview: res.data.preview });
-        }
-      })
-      .catch(() => { });
-    return () => {
-      cancelled = true;
-    };
-  }, [message._id, message.content, message.linkPreview, patchMessage]);
-  return null;
-}
-
-function LinkPreviewCard({ lp }: { lp: LinkPreview }) {
-  const open = () => window.open(lp.url, '_blank', 'noopener,noreferrer');
-  const showImage = !!lp.imageUrl;
-  const site = lp.siteName ?? hostnameOnly(lp.url);
-  const hasBody = !!(lp.title || site);
-  if (!showImage && !hasBody) return null;
-  return (
-    <button type="button" className="link-preview-card" onClick={open}>
-      {showImage ? (
-        <div className="link-preview-thumb">
-          <img src={lp.imageUrl} alt="" referrerPolicy="no-referrer" />
-          {lp.isVideo ? (
-            <span className="link-preview-play" aria-hidden>
-              {'\u25B6'}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      <div className="link-preview-body">
-        {lp.title ? <div className="link-preview-title">{lp.title}</div> : null}
-        <div className="link-preview-site">{site}</div>
-      </div>
-    </button>
-  );
-}
-
-// ── Visual Viewport hook ──────────────────────────────────────────────────
-// iOS Safari does NOT shrink the CSS viewport when the virtual keyboard opens.
-// We use the VisualViewport API to track the real visible area and write it
-// as --visual-vh on :root. The CSS container uses this custom property so the
-// layout always fits exactly in the visible screen area above the keyboard.
-function useVisualViewport() {
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    const update = () => {
-      const visibleHeight = vv.height;
-      document.documentElement.style.setProperty('--visual-vh', `${visibleHeight}px`);
-    };
-
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
-}
-
-// Simple hook: returns true when window width ≤ 600px
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 600);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 600px)');
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isMobile;
-}
-
-function App() {
+function App(): React.JSX.Element {
   useVisualViewport();
   const isMobile = useIsMobile();
 
@@ -186,11 +36,8 @@ function App() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
-  // Desktop: whether sidebar column is visible
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  // Mobile: whether the overlay drawer is open
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
-  // Reply feature
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -453,7 +300,6 @@ function App() {
             return [...prev, data.message];
           });
           
-          // NEW: tell the server we read it!
           if (String(data.message.senderId) !== String(currentUser._id)) {
             newSocket.emit('MESSAGE_READ', {
               chatId: data.chatId,
@@ -611,94 +457,20 @@ function App() {
   const getChatName = (chat: Chat) =>
     chat.otherParticipant?.username ?? getOtherParticipant(chat);
 
-  const formatTime = (d: string) =>
-    new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  const getDateKey = (d: string) => {
-    const date = new Date(d);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  };
-
-  const formatDateLabel = (d: string) => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const tk = getDateKey(today.toISOString());
-    const yk = getDateKey(yesterday.toISOString());
-    const k = getDateKey(d);
-    if (k === tk) return 'Today';
-    if (k === yk) return 'Yesterday';
-    return new Date(d).toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
-
-  // Turn URLs in text into clickable links (https, http, www., youtu.be)
-  const linkify = (text: string): React.ReactNode[] => {
-    if (!text || typeof text !== 'string') return [text];
-    const urlPattern = /(https?:\/\/[^\s<>"]+)|(www\.[^\s<>"]+)|(youtu\.be\/[^\s<>"]+)/gi;
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let m: RegExpExecArray | null;
-    const re = new RegExp(urlPattern.source, urlPattern.flags);
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > lastIndex) {
-        parts.push(text.slice(lastIndex, m.index));
-      }
-      let href = m[0];
-      if (!/^https?:\/\//i.test(href)) href = `https://${href}`;
-      parts.push(
-        <a key={m.index} href={href} target="_blank" rel="noopener noreferrer" className="message-link">
-          {m[0]}
-        </a>
-      );
-      lastIndex = re.lastIndex;
-    }
-    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-    return parts.length ? parts : [text];
-  };
-
-  // ── Login screen ──────────────────────────────────────────────────────────
   if (!currentUser) {
     return (
-      <div className="modal">
-        <div className="modal-content">
-          <h2>💬 Edu App</h2>
-          <p className="modal-hint">Enter your username and password to sign in or create an account.</p>
-          <form onSubmit={handleEnter}>
-            <div className="form-group">
-              <label>Username</label>
-              <input
-                type="text"
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                required
-                placeholder="Enter your username"
-                autoFocus
-              />
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                placeholder="Enter your password (min 6 characters)"
-                minLength={6}
-              />
-            </div>
-            {error && <div className="error">{error}</div>}
-            <div className="button-group">
-              <button type="submit" className="btn btn-primary" disabled={loading}>
-                {loading ? 'Entering…' : 'Enter'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+      <LoginScreen
+        newUsername={newUsername}
+        setNewUsername={setNewUsername}
+        newPassword={newPassword}
+        setNewPassword={setNewPassword}
+        onSubmit={handleEnter}
+        error={error}
+        loading={loading}
+      />
     );
   }
 
-  // ── Sidebar class ─────────────────────────────────────────────────────────
   const sidebarClass = [
     'sidebar',
     isMobile
@@ -706,13 +478,11 @@ function App() {
       : sidebarOpen ? '' : 'sidebar--collapsed',
   ].filter(Boolean).join(' ');
 
-  // ── Main app ──────────────────────────────────────────────────────────────
   return (
     <div className="container">
       {/* ── Header ── */}
       <div className="header">
-        <div className="header-left">
-          {/* Hamburger: mobile only */}
+        <div className="header-left" style={{ display: 'flex', alignItems: 'center' }}>
           <button
             className="hamburger-btn"
             onClick={() => setMobileSidebarOpen(true)}
@@ -725,14 +495,14 @@ function App() {
               <rect y="13" width="18" height="2" rx="1" fill="#8B93A7" />
             </svg>
           </button>
-          <h1>💬 Chat</h1>
+          <img src="/logo.png" alt="Edu App Logo" style={{ width: '28px', height: '28px', borderRadius: '6px', marginRight: '8px' }} />
+          <h1>Chat</h1>
         </div>
 
         <div className="header-right">
           <span className="user-badge" title={`Your ID: ${currentUser._id}`}>
             {currentUser.username}
           </span>
-          {/* Copy ID — hidden on mobile via CSS */}
           <button
             className="copy-id-btn"
             onClick={() => {
@@ -743,7 +513,6 @@ function App() {
           >
             ID: {currentUser._id.substring(0, 6)}…
           </button>
-          {/* Status dot */}
           <span
             className={`status-dot ${connectionStatus === 'connected' ? 'connected' : 'disconnected'}`}
             title={connectionStatus}
@@ -762,8 +531,6 @@ function App() {
 
       {/* ── Main content ── */}
       <div className="main-content">
-
-        {/* Mobile overlay backdrop */}
         <div
           className={`sidebar-overlay${isMobile && mobileSidebarOpen ? ' visible' : ''}`}
           onClick={() => setMobileSidebarOpen(false)}
@@ -846,7 +613,6 @@ function App() {
 
         {/* Chat area */}
         <div className="chat-area">
-          {/* Desktop: re-open floater */}
           {!isMobile && !sidebarOpen && (
             <button
               className="sidebar-open-btn"
@@ -857,7 +623,6 @@ function App() {
             </button>
           )}
 
-          {/* Mobile: top bar with back button + chat name */}
           {isMobile && selectedChat && (
             <div className="chat-area-topbar">
               <button
@@ -949,6 +714,9 @@ function App() {
                                 <div className="message-seen">Seen</div>
                               )}
                             </div>
+                            <div className="message-bubble-actions" style={{ display: 'none' }}>
+                              {/* Keep hidden actions placeholder structure matching design */}
+                            </div>
                             <div className="message-actions">
                               <button
                                 className="message-action-btn"
@@ -1012,61 +780,23 @@ function App() {
 
       {/* ── New Chat Modal ── */}
       {showChatModal && (
-        <div className="modal" onClick={() => setShowChatModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Start New Chat</h2>
-            <form onSubmit={handleCreateChat}>
-              <div className="form-group">
-                <label>User ID</label>
-                <input
-                  type="text"
-                  value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  required
-                  placeholder="Paste user ID here"
-                  autoFocus
-                />
-                <small>💡 Share your ID (tap the ID badge in the header) and ask them to paste it here.</small>
-              </div>
-              <div className="button-group">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => { setShowChatModal(false); setSelectedUserId(''); }}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={loading}>
-                  {loading ? 'Creating…' : 'Create Chat'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <NewChatModal
+          selectedUserId={selectedUserId}
+          setSelectedUserId={setSelectedUserId}
+          onSubmit={handleCreateChat}
+          onClose={() => { setShowChatModal(false); setSelectedUserId(''); }}
+          loading={loading}
+        />
       )}
 
       {/* ── Confirmation Modal ── */}
       {confirmModal.isOpen && (
-        <div className="modal" onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}>
-          <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{confirmModal.title}</h2>
-            <p className="modal-hint">{confirmModal.message}</p>
-            <div className="button-group">
-              <button
-                className="btn btn-secondary"
-                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-danger"
-                onClick={confirmModal.onConfirm}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        />
       )}
 
       {/* ── Toast notifications ── */}
