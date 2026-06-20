@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Production builds
+dist/
+**/dist/
+web-build/
+**/web-build/
+
+# Expo / Mobile folders
+.expo/
+**/.expo/
+ios/
+**/ios/
+android/
+**/android/
+
+# Local Environment Variables
+.env
+.env*
+**/.env
+**/.env*
+
+# IDEs & System files
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+.DS_Store
+**/.DS_Store
+*.swp
+*.swo
+**/*.swp
+**/*.swo
+
+# Logs
+*.log
+**/*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Certificates & Keys
+*.pem
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Miscellaneous
+.kotlin/
+*.orig.*
+.metro-health-check*
+*.tsbuildinfo
